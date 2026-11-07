@@ -32,6 +32,15 @@
     remove: function (k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
   };
 
+  // Which puzzle to play comes from the URL hash (#nasa, #wikipedia, #sample).
+  // No hash means the start page, where the player picks one.
+  var PUZZLES = {
+    nasa: { name: 'NASA picture', icon: '🚀', blurb: 'Astronomy Picture of the Day', file: 'data/nasa.json' },
+    wikipedia: { name: 'Wikipedia picture', icon: '📖', blurb: 'Picture of the day', file: 'data/wikipedia.json' },
+  };
+  var SAMPLE = { name: 'Sample picture', icon: '🌙', blurb: 'Placeholder until real pictures are fetched', file: 'data/sample.json' };
+  var puzzleKey = (location.hash || '').replace(/^#/, '');
+
   // ----------------------------------------------------------------- game state
   var data = null;
   var img = null;
@@ -429,6 +438,9 @@
   $('btn-rotate').addEventListener('click', function () { transformPiece(selected, 'rot'); });
   $('btn-flip').addEventListener('click', function () { transformPiece(selected, 'flip'); });
   $('btn-hint').addEventListener('click', useHint);
+  $('btn-back').addEventListener('click', backToStart);
+  $('btn-more').addEventListener('click', backToStart);
+  $('btn-start-help').addEventListener('click', function () { helpDialog.showModal(); });
   $('btn-restart').addEventListener('click', restart);
   $('btn-help').addEventListener('click', function () { helpDialog.showModal(); });
   $('btn-share').addEventListener('click', share);
@@ -524,7 +536,7 @@
     var seconds = Math.round(elapsed() + hints * C.HINT_PENALTY_SECONDS);
     var result = { seconds: seconds, moves: moves, hints: hints };
     if (!params.has('seed') && !practice) {
-      store.set('pd:done:' + puzzleDate, result);
+      store.set(doneKey(puzzleKey, puzzleDate), result);
       store.set('pd:stats', C.updateStats(store.get('pd:stats'), puzzleDate, seconds));
     }
     lastResult = result;
@@ -567,6 +579,7 @@
     if (!lastResult) return;
     var text = C.shareText({
       date: puzzleDate,
+      source: data.sample ? '' : (PUZZLES[puzzleKey] || {}).name,
       seconds: lastResult.seconds,
       moves: lastResult.moves,
       hints: lastResult.hints,
@@ -621,7 +634,7 @@
     var landscape = img.naturalWidth / img.naturalHeight >= 1.1;
     cols = landscape ? 6 : 5;
     rows = landscape ? 5 : 6;
-    var seedKey = params.get('seed') || puzzleDate;
+    var seedKey = params.get('seed') || puzzleKey + ':' + puzzleDate;
     var rng = C.mulberry32(C.hashString('pentomino-daily:' + seedKey + ':' + cols + 'x' + rows));
     pieces = C.generateTiling(cols, rows, rng).map(function (t, i) { return C.buildPiece(t, i); });
     trayOrder = C.shuffle(pieces.map(function (p) { return p.id; }), rng);
@@ -646,16 +659,85 @@
     lastResult = result;
   }
 
+  function fetchJson(url) {
+    return fetch(url, { cache: 'no-cache' }).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    });
+  }
+
+  function doneKey(key, date) { return 'pd:done:' + key + ':' + date; }
+
+  // ------------------------------------------------------------------ start page
+  function showStart() {
+    $('start').hidden = false;
+    $('start-date').textContent = C.formatDateShort(localDate());
+    var keys = Object.keys(PUZZLES);
+    Promise.all(keys.map(function (k) {
+      return fetchJson(PUZZLES[k].file).then(function (d) { return d; }, function () { return null; });
+    })).then(function (list) {
+      var items = keys.map(function (k, i) { return { key: k, meta: PUZZLES[k], data: list[i] }; });
+      if (!list.some(Boolean)) { // nothing fetched yet (local development): offer the sample
+        return fetchJson(SAMPLE.file).then(function (d) {
+          return [{ key: 'sample', meta: SAMPLE, data: d }];
+        }, function () { return items; });
+      }
+      return items;
+    }).then(renderStart);
+  }
+
+  function renderStart(items) {
+    var box = $('puzzle-list');
+    box.textContent = '';
+    var solved = 0;
+    var playable = 0;
+    items.forEach(function (it) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'puzzle-card';
+      var icon = document.createElement('span');
+      icon.className = 'icon';
+      icon.textContent = it.meta.icon;
+      var info = document.createElement('span');
+      info.className = 'info';
+      var name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = it.meta.name;
+      var sub = document.createElement('span');
+      sub.className = 'sub';
+      sub.textContent = it.meta.blurb;
+      info.append(name, sub);
+      var badge = document.createElement('span');
+      badge.className = 'badge';
+      btn.append(icon, info, badge);
+      if (!it.data) {
+        btn.disabled = true;
+        badge.textContent = 'Not available today';
+      } else {
+        playable++;
+        var date = it.data.date || localDate();
+        var done = store.get(doneKey(it.key, date));
+        if (done) {
+          solved++;
+          btn.className += ' done';
+          badge.textContent = '✓ ' + C.formatTime(done.seconds);
+        } else {
+          badge.textContent = 'Play';
+        }
+        btn.addEventListener('click', function () { location.hash = it.key; });
+      }
+      box.append(btn);
+    });
+    $('start-progress').textContent = playable
+      ? solved + ' of ' + playable + ' solved today' + (solved === playable ? ' — come back tomorrow!' : '')
+      : 'No pictures could be loaded. Try again later.';
+  }
+
+  function backToStart() { location.hash = ''; }
+
   function loadData() {
-    var urls = ['data/today.json', 'data/sample.json'];
-    return urls.reduce(function (chain, url) {
-      return chain.catch(function () {
-        return fetch(url, { cache: 'no-cache' }).then(function (res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          return res.json();
-        });
-      });
-    }, Promise.reject(new Error('start')));
+    if (!PUZZLES[puzzleKey] && puzzleKey !== 'sample') return Promise.reject(new Error('Unknown puzzle'));
+    return fetchJson((PUZZLES[puzzleKey] || SAMPLE).file);
   }
 
   function loadImage(src) {
@@ -673,6 +755,9 @@
   }
 
   function init() {
+    window.addEventListener('hashchange', function () { location.reload(); });
+    if (!PUZZLES[puzzleKey] && puzzleKey !== 'sample') { showStart(); return; }
+    $('app').hidden = false;
     layout();
     new ResizeObserver(function () { layout(); }).observe(stage);
 
@@ -686,10 +771,10 @@
         img = im;
         newPuzzle();
         statusEl.hidden = true;
-        $('puzzle-date').textContent = (data.sample ? 'Sample puzzle · ' : '') + C.formatDateShort(puzzleDate);
+        $('puzzle-date').textContent = (data.sample ? 'Sample puzzle · ' : (PUZZLES[puzzleKey].name + ' · ')) + C.formatDateShort(puzzleDate);
 
-        if (params.has('reset')) store.remove('pd:done:' + puzzleDate);
-        var done = params.has('seed') ? null : store.get('pd:done:' + puzzleDate);
+        if (params.has('reset')) store.remove(doneKey(puzzleKey, puzzleDate));
+        var done = params.has('seed') ? null : store.get(doneKey(puzzleKey, puzzleDate));
         if (done) showSolvedBoard(done);
 
         layout();

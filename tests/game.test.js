@@ -11,7 +11,8 @@ const Core = require('../site/core.js');
 const SITE = path.join(__dirname, '..', 'site');
 const GAME_SRC = fs.readFileSync(path.join(SITE, 'game.js'), 'utf8');
 
-function makeEnv({ search = '?debug', storage = new Map(), imageSize = [1000, 1200] } = {}) {
+function makeEnv({ search = '?debug', hash = '#sample', storage = new Map(), imageSize = [1000, 1200], files = {} } = {}) {
+  const hashLog = [];
   const intervals = new Set();
   const els = {};
   const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => ((t[k] = v), true) });
@@ -73,7 +74,19 @@ function makeEnv({ search = '?debug', storage = new Map(), imageSize = [1000, 12
       observe() {}
     },
     devicePixelRatio: 1,
-    location: { search, origin: 'http://localhost', pathname: '/' },
+    location: {
+      search,
+      origin: 'http://localhost',
+      pathname: '/',
+      get hash() {
+        return hash;
+      },
+      set hash(v) {
+        hash = v ? '#' + v : '';
+        hashLog.push(hash);
+      },
+    },
+    addEventListener() {},
     navigator: { clipboard: { writeText: (t) => ((clipboard.text = t), Promise.resolve()) } },
     localStorage: {
       getItem: (k) => (storage.has(k) ? storage.get(k) : null),
@@ -85,6 +98,7 @@ function makeEnv({ search = '?debug', storage = new Map(), imageSize = [1000, 12
         const text = fs.readFileSync(path.join(SITE, url), 'utf8');
         return { ok: true, status: 200, json: async () => JSON.parse(text) };
       }
+      if (files[url]) return { ok: true, status: 200, json: async () => files[url] };
       return { ok: false, status: 404, json: async () => ({}) };
     },
     Image: class {
@@ -116,6 +130,7 @@ function makeEnv({ search = '?debug', storage = new Map(), imageSize = [1000, 12
     el,
     sandbox,
     clipboard,
+    hashLog,
     docHandlers,
     pento: () => sandbox.__pento,
     teardown: () => intervals.forEach((id) => clearInterval(id)),
@@ -324,6 +339,74 @@ test('a drop that does not fit puts the piece back', async () => {
     assert.equal(st.dragging, false);
     assert.equal(st.pivot[0], st.slot[0], 'back in its tray slot');
     assert.equal(st.pivot[1], st.slot[1]);
+  } finally {
+    env.teardown();
+  }
+});
+
+
+const puzzleFile = (key, title, date) => ({ key, date, title, image: 'images/' + key + '.jpg', source: key, credit: '', description: '' });
+
+test('the start page offers both puzzles and shows which are solved', async () => {
+  const files = {
+    'data/nasa.json': puzzleFile('nasa', 'A Nebula', '2026-11-07'),
+    'data/wikipedia.json': puzzleFile('wikipedia', 'A Fox', '2026-11-07'),
+  };
+  const storage = new Map([['pd:done:nasa:2026-11-07', JSON.stringify({ seconds: 125, moves: 20, hints: 0 })]]);
+  const env = makeEnv({ hash: '', storage, files });
+  try {
+    await until(() => env.el('start-progress').textContent);
+    assert.equal(env.el('start').hidden, false, 'start page is shown');
+    assert.equal(env.el('start-progress').textContent, '1 of 2 solved today');
+    assert.equal(env.pento().pieces.length, 0);
+  } finally {
+    env.teardown();
+  }
+});
+
+test('a puzzle that could not be fetched is shown as unavailable', async () => {
+  const files = { 'data/wikipedia.json': puzzleFile('wikipedia', 'A Fox', '2026-11-07') };
+  const env = makeEnv({ hash: '', files });
+  try {
+    await until(() => env.el('start-progress').textContent);
+    assert.equal(env.el('start-progress').textContent, '0 of 1 solved today');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('with no fetched pictures (local development) the start page offers the sample', async () => {
+  const env = makeEnv({ hash: '' });
+  try {
+    await until(() => env.el('start-progress').textContent);
+    assert.equal(env.el('start-progress').textContent, '0 of 1 solved today');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('each picture has its own puzzle and its own saved result', async () => {
+  const files = {
+    'data/nasa.json': puzzleFile('nasa', 'A Nebula', '2026-11-07'),
+    'data/wikipedia.json': puzzleFile('wikipedia', 'A Fox', '2026-11-07'),
+  };
+  const storage = new Map();
+  const env = makeEnv({ hash: '#nasa', storage, files });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    assert.equal(env.el('app').hidden, false);
+    assert.match(env.el('puzzle-date').textContent, /NASA picture/);
+    env.el('help').open = false;
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    assert.ok(storage.has('pd:done:nasa:2026-11-07'));
+    assert.ok(!storage.has('pd:done:wikipedia:2026-11-07'), 'the other puzzle is still unsolved');
+    env.el('btn-share').fire('click');
+    await until(() => env.clipboard.text);
+    assert.match(env.clipboard.text, /NASA picture/);
+
+    env.el('btn-more').fire('click');
+    assert.deepEqual(env.hashLog, [''], 'More puzzles returns to the start page');
   } finally {
     env.teardown();
   }

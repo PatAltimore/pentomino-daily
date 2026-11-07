@@ -35,10 +35,10 @@ jobs:
       - name: Run tests
         run: npm test
 
-      # Writes site/data/today.json and site/images/daily-<date>.<ext> for this build only.
+      # Writes site/data/{nasa,wikipedia}.json and site/images/daily-<key>-<date>.<ext> for this build only.
       # Nothing is committed, so the repo doesn't grow by a picture every day.
-      # If every source fails the job fails and the previous deployment stays live.
-      - name: Fetch today's picture
+      # If both sources fail the job fails and the previous deployment stays live.
+      - name: Fetch today's pictures
         env:
           NASA_API_KEY: ${{ secrets.NASA_API_KEY }}
           # IMAGE_SOURCE: auto        # auto | apod | wikimedia

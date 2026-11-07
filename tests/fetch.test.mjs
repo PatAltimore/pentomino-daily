@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pickApod, pickWikimedia } from '../scripts/fetch-daily.mjs';
+import { pickApod, pickApodFromList, pickWikimedia } from '../scripts/fetch-daily.mjs';
 
 const apod = {
   date: '2026-11-07',
@@ -51,4 +51,17 @@ test('Wikimedia: asks for a larger thumbnail first and keeps the original as a f
   assert.match(pick.credit, /CC BY-SA 4\.0/);
   assert.equal(pick.pageUrl, 'https://commons.wikimedia.org/wiki/File:Fox.jpg');
   assert.equal(pickWikimedia({}, '2026-11-07'), null);
+});
+
+test('APOD list: picks the newest usable picture, skipping videos and copyrighted ones', () => {
+  const list = [
+    { ...apod, date: '2026-11-05', title: 'Older' },
+    { ...apod, date: '2026-11-07', media_type: 'video' },
+    { ...apod, date: '2026-11-06', title: 'Yesterday' },
+    { ...apod, date: '2026-11-04', copyright: 'Jane' },
+  ];
+  assert.equal(pickApodFromList(list).title, 'Yesterday');
+  assert.equal(pickApodFromList([{ ...apod, media_type: 'video' }]), null);
+  assert.equal(pickApodFromList(apod).date, '2026-11-07', 'a single object works too');
+  assert.equal(pickApodFromList(null), null);
 });

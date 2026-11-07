@@ -1,19 +1,21 @@
 #!/usr/bin/env node
 /*
- * Fetch today's picture and caption and write them into site/:
- *   site/images/daily-<date>.<ext>   the picture (same origin, so the canvas can slice it)
- *   site/data/today.json             title, caption, credit, link and the image path
+ * Fetch today's two pictures and captions and write them into site/:
+ *   site/images/daily-<key>-<date>.<ext>   the pictures (same origin, so the canvas can slice them)
+ *   site/data/<key>.json                   title, caption, credit, link and the image path
+ * where <key> is "nasa" (NASA's Astronomy Picture of the Day) or "wikipedia"
+ * (Wikipedia's Picture of the day). The site's start page offers one puzzle for each.
  *
- * Sources, in order (IMAGE_SOURCE=auto): NASA APOD, then Wikipedia's Picture of the day.
- * Set IMAGE_SOURCE=apod or IMAGE_SOURCE=wikimedia to force one.
+ * Set IMAGE_SOURCE=apod or IMAGE_SOURCE=wikimedia to fetch only one of them.
  *
  * Environment:
  *   NASA_API_KEY        free key from https://api.nasa.gov (falls back to the rate-limited DEMO_KEY)
- *   IMAGE_SOURCE        auto (default) | apod | wikimedia
+ *   IMAGE_SOURCE        auto (default, both) | apod | wikimedia
  *   ALLOW_COPYRIGHTED   "true" to use APOD pictures that carry a photographer's copyright.
  *                       Default is to skip them, because this script republishes the image file.
  *
- * Exits non-zero if nothing could be fetched, so a scheduled deploy keeps yesterday's puzzle live.
+ * Exits non-zero only if neither picture could be fetched, so a scheduled deploy keeps the
+ * previous puzzles live. If just one fails, the start page shows that puzzle as unavailable.
  */
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -50,6 +52,20 @@ export function pickApod(json, { allowCopyrighted = false } = {}) {
     pageUrl: `https://apod.nasa.gov/apod/ap${y.slice(2)}${m}${d}.html`,
     imageUrls,
   };
+}
+
+/**
+ * APOD has no picture some days (videos) or only a copyrighted one, so look back over a
+ * short window of recent days (newest first) for the latest usable picture.
+ */
+export function pickApodFromList(list, opts) {
+  const items = (Array.isArray(list) ? list : [list]).filter(Boolean);
+  items.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  for (const item of items) {
+    const pick = pickApod(item, opts);
+    if (pick) return pick;
+  }
+  return null;
 }
 
 /** Turn a Wikimedia "featured content" feed response into a pick, or null. */
@@ -111,17 +127,18 @@ async function download(urls) {
   throw lastError;
 }
 
-async function writeOutputs(pick, { buf, ext }) {
+async function writeOutputs(key, pick, { buf, ext }) {
   const imagesDir = path.join(SITE, 'images');
   const dataDir = path.join(SITE, 'data');
   await mkdir(imagesDir, { recursive: true });
   await mkdir(dataDir, { recursive: true });
-  const fileName = `daily-${pick.date}.${ext}`;
+  const fileName = `daily-${key}-${pick.date}.${ext}`;
   for (const name of await readdir(imagesDir)) {
-    if (name.startsWith('daily-') && name !== fileName) await rm(path.join(imagesDir, name));
+    if (name.startsWith(`daily-${key}-`) && name !== fileName) await rm(path.join(imagesDir, name));
   }
   await writeFile(path.join(imagesDir, fileName), buf);
   const today = {
+    key,
     date: pick.date,
     title: pick.title,
     description: pick.description,
@@ -130,8 +147,12 @@ async function writeOutputs(pick, { buf, ext }) {
     pageUrl: pick.pageUrl,
     image: `images/${fileName}`,
   };
-  await writeFile(path.join(dataDir, 'today.json'), JSON.stringify(today, null, 2) + '\n');
+  await writeFile(path.join(dataDir, `${key}.json`), JSON.stringify(today, null, 2) + '\n');
   return today;
+}
+
+function isoDaysAgo(days) {
+  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
 }
 
 async function main() {
@@ -142,12 +163,17 @@ async function main() {
   const attempts = [];
   if (source === 'auto' || source === 'apod') {
     attempts.push([
+      'nasa',
       'NASA APOD',
-      async () => pickApod(await fetchJson(`https://api.nasa.gov/planetary/apod?api_key=${apiKey}`), { allowCopyrighted }),
+      async () => {
+        const url = `https://api.nasa.gov/planetary/apod?api_key=${apiKey}&start_date=${isoDaysAgo(6)}&end_date=${isoDaysAgo(0)}`;
+        return pickApodFromList(await fetchJson(url), { allowCopyrighted });
+      },
     ]);
   }
   if (source === 'auto' || source === 'wikimedia') {
     attempts.push([
+      'wikipedia',
       'Wikipedia Picture of the day',
       async () => {
         const now = new Date();
@@ -171,22 +197,23 @@ async function main() {
     ]);
   }
 
-  for (const [name, attempt] of attempts) {
+  let saved = 0;
+  for (const [key, name, attempt] of attempts) {
     try {
       console.log(`Trying ${name}...`);
       const pick = await attempt();
       if (!pick) {
-        console.log(`  Skipped: no usable picture today (video, copyrighted or missing).`);
+        console.log('  Skipped: no usable picture (video, copyrighted or missing).');
         continue;
       }
-      const today = await writeOutputs(pick, await download(pick.imageUrls));
+      const today = await writeOutputs(key, pick, await download(pick.imageUrls));
       console.log(`Saved "${today.title}" (${today.date}) from ${today.source} -> site/${today.image}`);
-      return;
+      saved++;
     } catch (err) {
       console.warn(`  ${name} failed: ${err && err.message ? err.message : err}`);
     }
   }
-  throw new Error('No picture source worked.');
+  if (!saved) throw new Error('No picture source worked.');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

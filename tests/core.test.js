@@ -148,6 +148,10 @@ test('symmetric pieces count as home in their twin orientation', () => {
   assert.ok(C.isHome(p, { placed: true, r: twin.r, f: true, g0: twin.g0 }));
 });
 
+test('share text names the puzzle when a source is given', () => {
+  assert.match(C.shareText({ date: '2026-11-07', source: 'NASA picture', seconds: 5, moves: 1, hints: 0 }), /Daily · NASA picture · Nov 7/);
+});
+
 test('snapping, solving and un-solving', () => {
   const cols = 5;
   const rows = 6;

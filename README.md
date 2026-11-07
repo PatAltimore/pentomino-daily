@@ -1,16 +1,17 @@
 # Pentomino Daily
 
-A daily jigsaw. The picture is NASA's Astronomy Picture of the Day (or Wikipedia's Picture of the day), cut into **pentomino-shaped pieces**. Drag, rotate and flip the pieces to rebuild it. Everyone gets the same puzzle each day, and there is a Wordle-style share button.
+Two daily jigsaws. A start page lets you pick NASA's Astronomy Picture of the Day or Wikipedia's Picture of the day, each cut into **pentomino-shaped pieces**. Drag, rotate and flip the pieces to rebuild it. Everyone gets the same two puzzles each day, and there is a Wordle-style share button.
 
 It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it hosts for free on GitHub Pages.
 
 ## How it works
 
-- **Same puzzle for everyone.** The puzzle date seeds a random generator that tiles the grid with pentominoes (5x6 for portrait pictures, 6x5 for landscape). Pieces use distinct shapes where possible, and a solution always exists because the pieces are cut from a complete tiling.
+- **Two puzzles a day.** The start page shows a NASA card and a Wikipedia card, with the time of any you have already solved. If a source has no usable picture, its card says so. NASA's picture falls back to the latest usable one from the last week, since some days are videos or copyrighted.
+- **Same puzzle for everyone.** The puzzle source and date seed a random generator that tiles the grid with pentominoes (5x6 for portrait pictures, 6x5 for landscape). Pieces use distinct shapes where possible, and a solution always exists because the pieces are cut from a complete tiling.
 - **The picture is the hint.** Each piece shows its slice of the image, and it only counts when it sits in the right spot facing the right way. Pieces start scrambled in the tray, turned and flipped.
 - **Controls.** Drag a piece to move it. Tap a piece to select it, tap again to rotate. Rotate/Flip buttons act on the selected piece (keyboard: R, F, H for hint, Esc to deselect).
 - **Scoring.** Time plus moves. A hint shows where one piece belongs and adds 15 seconds. Restart starts the puzzle over; once you have solved it, Restart starts a practice run that doesn't change your saved result.
-- **Sharing and streaks.** Results are copied or shared as text. Streaks and best time live in the browser's local storage; there are no accounts or backend.
+- **Sharing and streaks.** Results are copied or shared as text. Solving either puzzle counts for the day's streak. Streaks and best time live in the browser's local storage; there are no accounts or backend.
 
 ## Project layout
 
@@ -19,10 +20,10 @@ site/                  the website (this folder is what gets deployed)
   index.html style.css
   core.js              pure game logic: pieces, tiling, snapping, tray layout, stats (no DOM)
   game.js              canvas rendering, input, timer, dialogs
-  data/sample.json     placeholder puzzle used until a daily picture has been fetched
+  data/sample.json     placeholder puzzle offered on the start page until real pictures have been fetched
   images/sample.svg
 scripts/
-  fetch-daily.mjs      downloads today's picture + caption into site/ (APOD, then Wikipedia)
+  fetch-daily.mjs      downloads today's NASA and Wikipedia pictures + captions into site/
   serve.mjs            tiny local web server
 tests/                 node:test suites (logic, fetch parsing, and a fake-DOM play-through)
 .github/workflows/deploy.yml   runs tests, fetches today's picture, deploys to GitHub Pages
@@ -35,10 +36,10 @@ Needs Node 20 or newer. No `npm install` is required.
 ```bash
 npm run dev     # http://localhost:8080  (shows the sample puzzle)
 npm test        # runs all tests
-npm run fetch   # pulls today's real picture into site/ (needs internet)
+npm run fetch   # pulls today's real pictures into site/ (needs internet)
 ```
 
-Handy URL parameters while developing: `?seed=anything` plays a different puzzle (and doesn't record results), `?reset` clears today's "solved" record, `?debug` exposes `window.__pento` for poking at state.
+Handy URL parameters while developing: `#nasa` / `#wikipedia` open a puzzle directly (no hash shows the start page), `?seed=anything` plays a different puzzle (and doesn't record results), `?reset` clears today's "solved" record, `?debug` exposes `window.__pento` for poking at state.
 
 ## Deploy to GitHub Pages
 
@@ -47,14 +48,14 @@ Handy URL parameters while developing: `?seed=anything` plays a different puzzle
 3. Optional but recommended: get a free key at <https://api.nasa.gov> and add it as a repository secret named `NASA_API_KEY` (Settings > Secrets and variables > Actions). Without it the script uses NASA's rate-limited `DEMO_KEY`, and falls back to Wikipedia if that is throttled.
 4. Run the workflow once from the **Actions** tab (or just push). The site appears at `https://<your-username>.github.io/<repo-name>/`.
 
-The workflow runs on every push and twice a day. Each run executes the tests, fetches the current picture, and deploys. The picture is **not committed**, so the repo stays small. If every source fails, the job fails and the previous day's puzzle stays live.
+The workflow runs on every push and twice a day. Each run executes the tests, fetches the current pictures, and deploys. The pictures are **not committed**, so the repo stays small. If both sources fail, the job fails and the previous day's puzzles stay live.
 
 ## Configuration (environment variables for `fetch-daily.mjs`)
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `NASA_API_KEY` | `DEMO_KEY` | Your free NASA API key |
-| `IMAGE_SOURCE` | `auto` | `auto` (APOD, then Wikipedia), `apod`, or `wikimedia` |
+| `IMAGE_SOURCE` | `auto` | `auto` (both), `apod`, or `wikimedia` (fetch just one) |
 | `ALLOW_COPYRIGHTED` | off | Set to `true` to include APOD pictures that carry a photographer's copyright |
 
 ## A note on image rights
