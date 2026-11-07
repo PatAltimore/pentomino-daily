@@ -90,7 +90,12 @@ async function fetchJson(url, timeoutMs = 20000) {
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status} from ${new URL(url).host}`);
+  if (!res.ok) {
+    // Include the start of the response so the CI log says why (bad key, rate limit, outage...).
+    const body = await res.text().catch(() => '');
+    const detail = body.replace(/\s+/g, ' ').trim().slice(0, 200);
+    throw new Error(`HTTP ${res.status} from ${new URL(url).host}` + (detail ? `: ${detail}` : ''));
+  }
   return res.json();
 }
 
