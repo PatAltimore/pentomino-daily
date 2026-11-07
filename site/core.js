@@ -277,8 +277,21 @@
     );
   }
 
+  // Solved when every piece is on the board without overlap. Placement already keeps
+  // pieces inside the board, so 5 cells per piece means the board is exactly covered.
+  // Any valid tiling counts, not just the one the puzzle was generated from.
   function isSolved(pieces, states) {
-    return pieces.every((p, i) => isHome(p, states[i]));
+    const seen = new Set();
+    for (let i = 0; i < pieces.length; i++) {
+      const st = states[i];
+      if (!st.placed) return false;
+      for (const c of cellsAt(pieces[i], st.r, st.f, st.g0)) {
+        const k = c[0] + ',' + c[1];
+        if (seen.has(k)) return false;
+        seen.add(k);
+      }
+    }
+    return true;
   }
 
   // ----------------------------------------------------------------------- tray

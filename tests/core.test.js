@@ -149,13 +149,15 @@ test('snapping, solving and un-solving', () => {
   });
   assert.ok(C.isSolved(pieces, states));
 
-  // A piece in the right place but turned is not solved (even for symmetric shapes).
-  states[0].r = 1;
+  // Un-placing a piece, or overlapping two pieces, is not solved.
+  states[0].placed = false;
   assert.ok(!C.isSolved(pieces, states));
-  states[0].r = 0;
-  states[0].f = true;
+  states[0].placed = true;
+  assert.ok(C.isSolved(pieces, states));
+  const g = states[1].g0;
+  states[1].g0 = states[0].g0;
   assert.ok(!C.isSolved(pieces, states));
-  states[0].f = false;
+  states[1].g0 = g;
   assert.ok(C.isSolved(pieces, states));
 });
 
