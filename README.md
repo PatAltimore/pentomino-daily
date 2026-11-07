@@ -7,12 +7,12 @@ It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it h
 ## How it works
 
 - **Four puzzles a day.** Each has its own picture, and its own saved result:
-  - **Easy, Tetromino puzzle**: 4-cell pieces on a 4x6 board (6 pieces). Wikipedia's Picture of the day from yesterday.
-  - **Medium, NASA picture**: pentominoes on a 5x6 board, using the Astronomy Picture of the Day.
-  - **Medium, Wikipedia picture**: pentominoes on a 5x6 board, using today's Picture of the day.
-  - **Challenge, Fixed pieces**: 8 pentominoes on a 5x8 board that can't be rotated or flipped. They start upright, so the work is finding where each belongs. Wikipedia's Picture of the day from two days ago.
+  - **Easy, Tetromino puzzle**: 4-cell pieces on a 4x6 board (6 pieces). A public-domain artwork from the Art Institute of Chicago.
+  - **Medium, NASA picture**: pentominoes on a 5x6 board. NASA's Astronomy Picture of the Day, or a picture from the NASA Image and Video Library when NASA's APOD API is down.
+  - **Medium, Wikipedia picture**: pentominoes on a 5x6 board, using today's Wikipedia Picture of the day.
+  - **Challenge, Fixed pieces**: 8 pentominoes on a 5x8 board that can't be rotated or flipped. They start upright, so the work is finding where each belongs. A second Art Institute artwork.
 
-  (Landscape pictures swap the board's width and height.) The start page shows the time of any you have already solved, and says "Not available today" for a puzzle whose picture couldn't be fetched. NASA's picture falls back to the latest usable one from the last week (one request per day), since some days are videos or copyrighted. The deploy also remembers the last pictures it fetched, so an outage on NASA's side keeps the previous picture instead of removing the puzzle.
+  (Landscape pictures swap the board's width and height.) The start page shows the time of any you have already solved, and says "Not available today" for a puzzle whose picture couldn't be fetched. The artworks are picked from the Art Institute's public-domain (CC0) works by the date, so everyone gets the same ones; if the Art Institute can't be reached the two puzzles use Wikipedia pictures from earlier days instead. APOD falls back to the latest usable one from the last week (one request per day), since some days are videos or copyrighted. The deploy also remembers the last pictures it fetched, so an outage on NASA's side keeps the previous picture instead of removing the puzzle.
 - **Same puzzle for everyone.** The puzzle source and date seed a random generator that tiles the grid with pentominoes. Pieces use distinct shapes where possible, and a solution always exists because the pieces are cut from a complete tiling.
 - **The picture is the hint.** Each piece shows its slice of the image, and it only counts when it sits in the right spot facing the right way. Pieces start scrambled in the tray, turned and flipped.
 - **Controls.** Drag a piece to move it. Tap a piece to select it, tap again to rotate. Rotate/Flip buttons act on the selected piece (keyboard: R, F, H for hint, Esc to deselect).
@@ -61,7 +61,7 @@ The workflow runs on every push and twice a day. Each run executes the tests, fe
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `NASA_API_KEY` | `DEMO_KEY` | Your free NASA API key |
-| `IMAGE_SOURCE` | `auto` | `auto` (all), `apod` (NASA only), or `wikimedia` (the three Wikipedia pictures only) |
+| `IMAGE_SOURCE` | `auto` | `auto` (all), `apod` (NASA only), `wikimedia` (Wikipedia only) or `artic` (Art Institute only) |
 | `ALLOW_COPYRIGHTED` | off | Set to `true` to include APOD pictures that carry a photographer's copyright |
 
 ## A note on image rights

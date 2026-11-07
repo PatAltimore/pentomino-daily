@@ -1,26 +1,28 @@
 #!/usr/bin/env node
 /*
- * Fetch today's two pictures and captions and write them into site/:
+ * Fetch today's four puzzle pictures and captions and write them into site/:
  *   site/images/daily-<key>-<date>.<ext>   the pictures (same origin, so the canvas can slice them)
  *   site/data/<key>.json                   title, caption, credit, link and the image path
  * where <key> is one of
- *   nasa        NASA's Astronomy Picture of the Day
+ *   nasa        NASA's Astronomy Picture of the Day; if NASA's API is down, a picture from the
+ *               NASA Image and Video Library (a different host) chosen by the date
  *   wikipedia   Wikipedia's Picture of the day
- *   tetromino   Wikipedia's Picture of the day from the day before (the easy puzzle)
- *   fixed       Wikipedia's Picture of the day from two days before (the no-rotation puzzle)
- * The site's start page offers one puzzle for each. The older Wikipedia pictures give the extra
- * puzzles their own images without relying on NASA's flaky API.
+ *   tetromino   a public-domain artwork from the Art Institute of Chicago, chosen by the date
+ *   fixed       another Art Institute artwork (the no-rotation puzzle)
+ * If the Art Institute is unreachable, tetromino and fixed fall back to Wikipedia's Picture of
+ * the day from one and two days earlier. The site's start page offers one puzzle for each.
  *
- * Set IMAGE_SOURCE=apod or IMAGE_SOURCE=wikimedia to fetch only NASA's or only Wikipedia's.
+ * Set IMAGE_SOURCE=apod (NASA only), wikimedia (Wikipedia only) or artic (Art Institute only)
+ * to fetch just one source.
  *
  * Environment:
  *   NASA_API_KEY        free key from https://api.nasa.gov (falls back to the rate-limited DEMO_KEY)
- *   IMAGE_SOURCE        auto (default, both) | apod | wikimedia
+ *   IMAGE_SOURCE        auto (default, all) | apod | wikimedia | artic
  *   ALLOW_COPYRIGHTED   "true" to use APOD pictures that carry a photographer's copyright.
  *                       Default is to skip them, because this script republishes the image file.
  *
- * Exits non-zero only if neither picture could be fetched, so a scheduled deploy keeps the
- * previous puzzles live. If just one fails, the start page shows that puzzle as unavailable.
+ * Exits non-zero only if nothing could be fetched or kept from a previous run, so a scheduled
+ * deploy keeps the previous puzzles live. A puzzle with no picture shows as unavailable.
  */
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
@@ -57,6 +59,95 @@ export function pickApod(json, { allowCopyrighted = false } = {}) {
     credit: json.copyright ? 'Image credit & copyright: ' + tidy(json.copyright, 120) : 'Image credit: NASA',
     pageUrl: `https://apod.nasa.gov/apod/ap${y.slice(2)}${m}${d}.html`,
     imageUrls,
+  };
+}
+
+const stripHtml = (value) =>
+  String(value ?? '')
+    .replace(/<\/?(p|br|div|li|ul|ol|h\d)\b[^>]*>/gi, ' ') // block tags separate words
+    .replace(/<[^>]*>/g, '') // inline tags (b, i, a...) do not
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&rsquo;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+
+/** Small stable string hash, so the same date always picks the same item. */
+export function hashSeed(text) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Choose a public-domain artwork from an Art Institute of Chicago search response. The pick is
+ * deterministic for a given seed, and only works whose image has a puzzle-friendly shape
+ * (not a very long strip) are considered. `skipIds` keeps two puzzles from using the same work.
+ */
+export function pickArtic(json, { date, seed, skipIds = [] } = {}) {
+  const items = (json && Array.isArray(json.data) ? json.data : [])
+    .filter((a) => {
+      if (!a || !a.image_id || a.is_public_domain !== true) return false;
+      if (skipIds.includes(a.id)) return false;
+      const w = a.thumbnail && a.thumbnail.width;
+      const h = a.thumbnail && a.thumbnail.height;
+      if (!w || !h) return false;
+      const ratio = w / h;
+      return ratio >= 0.6 && ratio <= 1.7;
+    })
+    .sort((a, b) => a.id - b.id);
+  if (!items.length) return null;
+  const art = items[hashSeed(String(seed)) % items.length];
+  const iiif = (json.config && json.config.iiif_url) || 'https://www.artic.edu/iiif/2';
+  const byline = tidy(stripHtml(art.artist_display).replace(/\s*\n\s*/g, ', '), 120);
+  return {
+    source: 'Art Institute of Chicago',
+    id: art.id,
+    date,
+    title: tidy(stripHtml(art.title) || 'Untitled', 120),
+    description: tidy(stripHtml(art.short_description || art.description), 1500) || byline,
+    credit: [byline && 'Artwork: ' + byline, 'Art Institute of Chicago, CC0 public domain'].filter(Boolean).join(' · '),
+    pageUrl: `https://www.artic.edu/artworks/${art.id}`,
+    imageUrls: [`${iiif}/${art.image_id}/full/843,/0/default.jpg`, `${iiif}/${art.image_id}/full/600,/0/default.jpg`],
+  };
+}
+
+/** NASA Image and Video Library: pick one result from a search response by seed. */
+export function pickNasaLibraryItem(json, seed) {
+  const items = ((json && json.collection && json.collection.items) || []).filter((it) => {
+    const d = it && it.data && it.data[0];
+    if (!d || !d.nasa_id || d.media_type !== 'image') return false;
+    // The library mixes in a few pictures with outside credits; keep to plain NASA ones.
+    return !/copyright|©/i.test([d.description, d.secondary_creator, d.photographer].join(' '));
+  });
+  if (!items.length) return null;
+  items.sort((a, b) => String(a.data[0].nasa_id).localeCompare(String(b.data[0].nasa_id)));
+  return items[hashSeed(String(seed)) % items.length];
+}
+
+/** Turn a library search result (plus its asset list, if we have it) into a pick. */
+export function buildNasaLibraryPick(item, assetJson, date) {
+  const d = item.data[0];
+  const links = ((assetJson && assetJson.collection && assetJson.collection.items) || []).map((x) => x.href);
+  const preview = (item.links || []).find((l) => l.render === 'image' || l.rel === 'preview');
+  const pick = (suffix) => links.find((h) => new RegExp('~' + suffix + '\\.(jpe?g|png)$', 'i').test(h));
+  const imageUrls = [pick('large'), pick('medium'), preview && preview.href]
+    .filter(Boolean)
+    .map((u) => u.replace(/^http:/, 'https:').replace(/ /g, '%20'));
+  if (!imageUrls.length) return null;
+  const who = d.secondary_creator || d.photographer || d.center || '';
+  return {
+    source: 'NASA Image and Video Library',
+    date,
+    title: tidy(d.title || 'NASA picture', 120),
+    description: tidy(stripHtml(d.description_508 || d.description), 1500),
+    credit: 'Image credit: NASA' + (who && who !== 'NASA' ? ' / ' + tidy(who, 80) : ''),
+    pageUrl: `https://images.nasa.gov/details/${encodeURIComponent(d.nasa_id)}`,
+    imageUrls: [...new Set(imageUrls)],
   };
 }
 
@@ -180,62 +271,116 @@ async function fetchWikipedia(daysBack) {
   throw lastError;
 }
 
+const todayUtc = () => new Date().toISOString().slice(0, 10);
+
+/** A public-domain artwork from the Art Institute of Chicago, chosen by date (and puzzle key). */
+async function fetchArtic(key, skipIds) {
+  const date = todayUtc();
+  // The list is the first 1000 public-domain results in 100-item pages; the date picks the page,
+  // then the work within it, so everyone gets the same artwork and it changes daily.
+  const page = (hashSeed('page:' + date) % 10) + 1;
+  const fields = 'id,title,artist_display,image_id,is_public_domain,thumbnail,short_description,description';
+  const url =
+    'https://api.artic.edu/api/v1/artworks/search?query[term][is_public_domain]=true' +
+    `&fields=${fields}&limit=100&page=${page}`;
+  return pickArtic(await fetchJsonRetry(url), { date, seed: date + ':' + key, skipIds });
+}
+
+const NASA_LIBRARY_TOPICS = [
+  'nebula', 'galaxy', 'hubble', 'earth from space', 'mars', 'supernova', 'moon',
+  'aurora', 'sun', 'saturn', 'jupiter', 'webb telescope', 'star cluster', 'comet',
+];
+
+/** NASA Image and Video Library (images-api.nasa.gov), used when the APOD API is down. */
+async function fetchNasaLibrary() {
+  const date = todayUtc();
+  const topic = NASA_LIBRARY_TOPICS[hashSeed('topic:' + date) % NASA_LIBRARY_TOPICS.length];
+  const search = await fetchJson(
+    `https://images-api.nasa.gov/search?q=${encodeURIComponent(topic)}&media_type=image&page_size=100`,
+    45000,
+  );
+  const item = pickNasaLibraryItem(search, date + ':' + topic);
+  if (!item) return null;
+  let assets = null;
+  try {
+    assets = await fetchJson(`https://images-api.nasa.gov/asset/${encodeURIComponent(item.data[0].nasa_id)}`, 30000);
+  } catch (err) {
+    console.warn('  Could not list sizes, using the preview image: ' + (err && err.message ? err.message : err));
+  }
+  return buildNasaLibraryPick(item, assets, date);
+}
+
+async function fetchApod(apiKey, allowCopyrighted) {
+  // One request per day: NASA's date-range query is slow and times out. Start with
+  // today, then step back a few days if that day has no usable picture.
+  const base = `https://api.nasa.gov/planetary/apod?api_key=${apiKey}`;
+  let json = await fetchJsonRetry(base);
+  const pick = pickApod(json, { allowCopyrighted });
+  if (pick) return pick;
+  for (let back = 1; back <= 6; back++) {
+    const date = shiftDate(json.date, -1);
+    json = await fetchJsonRetry(`${base}&date=${date}`);
+    const older = pickApod(json, { allowCopyrighted });
+    if (older) return older;
+  }
+  return null;
+}
+
 async function main() {
   const source = (process.env.IMAGE_SOURCE || 'auto').toLowerCase();
   const allowCopyrighted = process.env.ALLOW_COPYRIGHTED === 'true';
   const apiKey = process.env.NASA_API_KEY || 'DEMO_KEY';
+  const want = (name) => source === 'auto' || source === name;
 
-  const attempts = [];
-  if (source === 'auto' || source === 'apod') {
-    attempts.push([
-      'nasa',
-      'NASA APOD',
-      async () => {
-        // One request per day: NASA's date-range query is slow and times out. Start with
-        // today, then step back a few days if that day has no usable picture.
-        const base = `https://api.nasa.gov/planetary/apod?api_key=${apiKey}`;
-        let json = await fetchJsonRetry(base);
-        const pick = pickApod(json, { allowCopyrighted });
-        if (pick) return pick;
-        for (let back = 1; back <= 6; back++) {
-          const date = shiftDate(json.date, -1);
-          json = await fetchJsonRetry(`${base}&date=${date}`);
-          const older = pickApod(json, { allowCopyrighted });
-          if (older) return older;
-        }
-        return null;
-      },
-    ]);
+  // For each puzzle, sources to try in order; the first one that gives a downloadable picture wins.
+  let articPick = null;
+  const chains = {};
+  if (want('apod')) {
+    chains.nasa = [
+      ['NASA APOD', () => fetchApod(apiKey, allowCopyrighted)],
+      ['NASA Image and Video Library', fetchNasaLibrary],
+    ];
   }
-  if (source === 'auto' || source === 'wikimedia') {
-    for (const [key, name, daysBack] of [
-      ['wikipedia', 'Wikipedia Picture of the day', 0],
-      ['tetromino', 'Wikipedia Picture of the day (1 day back)', 1],
-      ['fixed', 'Wikipedia Picture of the day (2 days back)', 2],
-    ]) {
-      attempts.push([key, name, () => fetchWikipedia(daysBack)]);
+  if (want('wikimedia')) chains.wikipedia = [['Wikipedia Picture of the day', () => fetchWikipedia(0)]];
+  for (const [key, daysBack] of [['tetromino', 1], ['fixed', 2]]) {
+    const chain = [];
+    if (want('artic')) {
+      chain.push([
+        'Art Institute of Chicago',
+        async () => {
+          const pick = await fetchArtic(key, articPick ? [articPick.id] : []);
+          if (pick) articPick = pick;
+          return pick;
+        },
+      ]);
     }
+    if (want('wikimedia')) chain.push([`Wikipedia Picture of the day (${daysBack} day back)`, () => fetchWikipedia(daysBack)]);
+    if (chain.length) chains[key] = chain;
   }
 
   let saved = 0;
   let kept = 0;
-  for (const [key, name, attempt] of attempts) {
-    try {
-      console.log(`Trying ${name}...`);
-      const pick = await attempt();
-      if (!pick) {
-        console.log('  Skipped: no usable picture (video, copyrighted or missing).');
-      } else {
+  for (const [key, chain] of Object.entries(chains)) {
+    let done = false;
+    for (const [name, attempt] of chain) {
+      try {
+        console.log(`[${key}] Trying ${name}...`);
+        const pick = await attempt();
+        if (!pick) {
+          console.log('  Skipped: no usable picture (video, copyrighted or missing).');
+          continue;
+        }
         const today = await writeOutputs(key, pick, await download(pick.imageUrls));
-        console.log(`Saved "${today.title}" (${today.date}) from ${today.source} -> site/${today.image}`);
+        console.log(`  Saved "${today.title}" (${today.date}) from ${today.source} -> site/${today.image}`);
         saved++;
-        continue;
+        done = true;
+        break;
+      } catch (err) {
+        console.warn(`  ${name} failed: ${err && err.message ? err.message : err}`);
       }
-    } catch (err) {
-      console.warn(`  ${name} failed: ${err && err.message ? err.message : err}`);
     }
     // The deploy workflow restores the previous run's files, so an outage keeps the old puzzle.
-    if (existsSync(path.join(SITE, 'data', `${key}.json`))) {
+    if (!done && existsSync(path.join(SITE, 'data', `${key}.json`))) {
       console.log(`  Keeping the previously fetched ${key} picture.`);
       kept++;
     }

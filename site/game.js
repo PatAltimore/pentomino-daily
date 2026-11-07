@@ -37,10 +37,10 @@
   // Each puzzle: which piece set it is cut from, board size ([portrait cols, rows]; landscape
   // pictures swap them) and whether pieces may be rotated and flipped.
   var PUZZLES = {
-    tetromino: { name: 'Tetromino puzzle', icon: '🧱', level: 'Easy', blurb: '4-cell pieces, 6 pieces', file: 'data/tetromino.json', set: 'tetromino', grid: [4, 6], fixed: false },
-    nasa: { name: 'NASA picture', icon: '🚀', level: 'Medium', blurb: 'Astronomy Picture of the Day', file: 'data/nasa.json', set: 'pentomino', grid: [5, 6], fixed: false },
-    wikipedia: { name: 'Wikipedia picture', icon: '📖', level: 'Medium', blurb: 'Picture of the day', file: 'data/wikipedia.json', set: 'pentomino', grid: [5, 6], fixed: false },
-    fixed: { name: 'Fixed pieces', icon: '📌', level: 'Challenge', blurb: '8 pieces, no rotating or flipping', file: 'data/fixed.json', set: 'pentomino', grid: [5, 8], fixed: true },
+    tetromino: { name: 'Tetromino puzzle', icon: '🧱', level: 'Easy', blurb: 'Artwork, 6 pieces of 4 cells', file: 'data/tetromino.json', set: 'tetromino', grid: [4, 6], fixed: false },
+    nasa: { name: 'NASA picture', icon: '🚀', level: 'Medium', blurb: 'A picture from NASA', file: 'data/nasa.json', set: 'pentomino', grid: [5, 6], fixed: false },
+    wikipedia: { name: 'Wikipedia picture', icon: '📖', level: 'Medium', blurb: 'Wikipedia\'s picture of the day', file: 'data/wikipedia.json', set: 'pentomino', grid: [5, 6], fixed: false },
+    fixed: { name: 'Fixed pieces', icon: '📌', level: 'Challenge', blurb: 'Artwork, 8 pieces, no turning', file: 'data/fixed.json', set: 'pentomino', grid: [5, 8], fixed: true },
   };
   var SAMPLE = { name: 'Sample picture', icon: '🌙', level: '', blurb: 'Placeholder until real pictures are fetched', file: 'data/sample.json', set: 'pentomino', grid: [5, 6], fixed: false };
   var puzzleCfg = PUZZLES[(location.hash || '').replace(/^#/, '')] || SAMPLE;
