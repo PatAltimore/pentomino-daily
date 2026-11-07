@@ -1,6 +1,6 @@
 # Pentomino Daily
 
-Four daily jigsaws at different levels. A start page lets you pick one; each is a picture of the day cut into **pentomino or tetromino pieces**. Drag, rotate and flip the pieces to rebuild it. Everyone gets the same two puzzles each day, and there is a Wordle-style share button.
+Four daily jigsaws at different levels. A start page lets you pick one; each is a picture of the day cut into **pentomino or tetromino pieces**. Drag, rotate and flip the pieces to rebuild it. Everyone gets the same four puzzles each day, and there is a Wordle-style share button.
 
 It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it hosts for free on GitHub Pages.
 
@@ -13,7 +13,7 @@ It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it h
   - **Challenge, Fixed pieces**: 8 pentominoes on a 5x8 board that can't be rotated or flipped. They start upright, so the work is finding where each belongs. Wikipedia's Picture of the day from two days ago.
 
   (Landscape pictures swap the board's width and height.) The start page shows the time of any you have already solved, and says "Not available today" for a puzzle whose picture couldn't be fetched. NASA's picture falls back to the latest usable one from the last week (one request per day), since some days are videos or copyrighted. The deploy also remembers the last pictures it fetched, so an outage on NASA's side keeps the previous picture instead of removing the puzzle.
-- **Same puzzle for everyone.** The puzzle source and date seed a random generator that tiles the grid with pentominoes (5x6 for portrait pictures, 6x5 for landscape). Pieces use distinct shapes where possible, and a solution always exists because the pieces are cut from a complete tiling.
+- **Same puzzle for everyone.** The puzzle source and date seed a random generator that tiles the grid with pentominoes. Pieces use distinct shapes where possible, and a solution always exists because the pieces are cut from a complete tiling.
 - **The picture is the hint.** Each piece shows its slice of the image, and it only counts when it sits in the right spot facing the right way. Pieces start scrambled in the tray, turned and flipped.
 - **Controls.** Drag a piece to move it. Tap a piece to select it, tap again to rotate. Rotate/Flip buttons act on the selected piece (keyboard: R, F, H for hint, Esc to deselect).
 - **Scoring.** Time plus moves. A hint shows where one piece belongs and adds 15 seconds. Restart starts the puzzle over; once you have solved it, Restart starts a practice run that doesn't change your saved result.
