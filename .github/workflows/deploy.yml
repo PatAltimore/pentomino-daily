@@ -35,6 +35,20 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # Remember the last pictures that were fetched. If NASA's API is down on a later run, the
+      # restored picture is deployed instead of leaving that puzzle unavailable. The fetch step
+      # below overwrites these files whenever it succeeds. (Caches are write-once per key, so
+      # each run saves under its own key and restores the newest one.)
+      - name: Restore last fetched pictures
+        uses: actions/cache@v4
+        with:
+          path: |
+            site/data/nasa.json
+            site/data/wikipedia.json
+            site/images/daily-*
+          key: daily-${{ github.run_id }}
+          restore-keys: daily-
+
       # Writes site/data/{nasa,wikipedia}.json and site/images/daily-<key>-<date>.<ext> for this build only.
       # Nothing is committed, so the repo doesn't grow by a picture every day.
       # If both sources fail the job fails and the previous deployment stays live.

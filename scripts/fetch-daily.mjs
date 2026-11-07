@@ -17,6 +17,7 @@
  * Exits non-zero only if neither picture could be fetched, so a scheduled deploy keeps the
  * previous puzzles live. If just one fails, the start page shows that puzzle as unavailable.
  */
+import { existsSync } from 'node:fs';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -205,22 +206,29 @@ async function main() {
   }
 
   let saved = 0;
+  let kept = 0;
   for (const [key, name, attempt] of attempts) {
     try {
       console.log(`Trying ${name}...`);
       const pick = await attempt();
       if (!pick) {
         console.log('  Skipped: no usable picture (video, copyrighted or missing).');
+      } else {
+        const today = await writeOutputs(key, pick, await download(pick.imageUrls));
+        console.log(`Saved "${today.title}" (${today.date}) from ${today.source} -> site/${today.image}`);
+        saved++;
         continue;
       }
-      const today = await writeOutputs(key, pick, await download(pick.imageUrls));
-      console.log(`Saved "${today.title}" (${today.date}) from ${today.source} -> site/${today.image}`);
-      saved++;
     } catch (err) {
       console.warn(`  ${name} failed: ${err && err.message ? err.message : err}`);
     }
+    // The deploy workflow restores the previous run's files, so an outage keeps the old puzzle.
+    if (existsSync(path.join(SITE, 'data', `${key}.json`))) {
+      console.log(`  Keeping the previously fetched ${key} picture.`);
+      kept++;
+    }
   }
-  if (!saved) throw new Error('No picture source worked.');
+  if (!saved && !kept) throw new Error('No picture source worked.');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
