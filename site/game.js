@@ -490,9 +490,14 @@
     if (won || !pieces.length) return;
     var wrong = pieces.filter(function (p, i) { return !C.isHome(p, states[i]); });
     if (!wrong.length) return;
-    var pick = selected >= 0 && !C.isHome(pieces[selected], states[selected])
-      ? pieces[selected]
-      : wrong[Math.floor(Math.random() * wrong.length)];
+    // Prefer pieces still in the tray: a piece already on the board may be part of a
+    // different valid tiling, so only point at those once the tray is empty.
+    var loose = wrong.filter(function (p) { return !states[p.id].placed; });
+    var pool = loose.length ? loose : wrong;
+    var sel = selected >= 0 ? pieces[selected] : null;
+    var pick = sel && pool.indexOf(sel) >= 0
+      ? sel
+      : pool[Math.floor(Math.random() * pool.length)];
     startClock();
     hints++;
     hintId = pick.id;
