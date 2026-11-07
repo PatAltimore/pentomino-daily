@@ -60,7 +60,6 @@
   var hints = 0;
   var hintId = -1;
   var hintTimer = 0;
-  var outlineAlpha = 1;
   var lastResult = null;
   var clock = { running: false, base: 0, since: 0 };
   var timerId = 0;
@@ -217,12 +216,15 @@
       ctx.stroke();
       ctx.shadowBlur = 0;
     }
-    if (outlineAlpha > 0) {
-      ctx.globalAlpha = outlineAlpha;
-      ctx.lineWidth = Math.max(1.5, cs * 0.05);
-      ctx.strokeStyle = 'rgba(8, 10, 20, 0.9)';
-      ctx.stroke();
-    }
+    // Always-on thin border: a dark line with a light one on top, so each piece's shape
+    // shows up on both dark and bright parts of the picture.
+    var line = Math.max(1, cs * 0.03);
+    ctx.lineWidth = line + 1.5;
+    ctx.strokeStyle = 'rgba(8, 10, 20, 0.75)';
+    ctx.stroke();
+    ctx.lineWidth = line;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -541,13 +543,7 @@
     }
     lastResult = result;
     updateHud();
-    var t0 = Date.now();
-    (function fade() {
-      outlineAlpha = Math.max(0, 1 - (Date.now() - t0) / 700);
-      invalidate();
-      if (outlineAlpha > 0) setTimeout(fade, 30);
-      else showWin(result);
-    })();
+    setTimeout(function () { showWin(result); }, 700);
   }
 
   function showWin(result) {
@@ -612,7 +608,6 @@
     moves = 0;
     hints = 0;
     hintId = -1;
-    outlineAlpha = 1;
     clock = { running: false, base: 0, since: 0 };
     if (timerId) clearInterval(timerId);
     timerId = 0;
@@ -644,7 +639,6 @@
 
   function showSolvedBoard(result) {
     won = true;
-    outlineAlpha = 0;
     hints = result.hints || 0;
     moves = result.moves || 0;
     clock = { running: false, base: Math.max(0, result.seconds - hints * C.HINT_PENALTY_SECONDS), since: 0 };
