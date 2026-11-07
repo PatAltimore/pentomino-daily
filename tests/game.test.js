@@ -130,8 +130,6 @@ const until = async (fn, ms = 3000) => {
   }
 };
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
 const ptr = (x, y) => ({ pointerId: 1, clientX: x, clientY: y, button: 0, preventDefault() {} });
 
 function tap(canvas, x, y) {
@@ -236,42 +234,10 @@ test('landscape pictures get a 6x5 board and tapping a selected piece rotates it
     const r0 = st.r;
     tap(canvas, x, y); // select
     assert.equal(st.r, r0);
-    await sleep(350); // slower than a double-tap
     tap(canvas, x, y); // tap again -> rotate
     assert.equal(st.r, (r0 + 1) & 3);
     env.el('btn-flip').fire('click');
     assert.equal(st.r, (4 - ((r0 + 1) & 3)) & 3);
-  } finally {
-    env.teardown();
-  }
-});
-
-test('double-tap flips the piece without leaving a stray rotation or extra move', async () => {
-  const env = makeEnv();
-  try {
-    await until(() => env.pento() && env.pento().pieces.length > 0);
-    const { layout, states } = env.pento();
-    const canvas = env.el('board');
-    const { s, bx, by } = layout;
-    const st = states[1];
-    const x = bx + st.slot[0] * s;
-    const y = by + st.slot[1] * s;
-    const { r, f } = st;
-
-    // Not selected yet: the first tap selects, the quick second tap flips.
-    tap(canvas, x, y);
-    tap(canvas, x, y);
-    assert.equal(st.r, (4 - r) & 3);
-    assert.equal(st.f, !f);
-    assert.equal(env.el('moves').textContent, '1 move');
-
-    // Already selected: the first tap rotates, the second undoes that and flips back.
-    await sleep(350);
-    tap(canvas, x, y);
-    tap(canvas, x, y);
-    assert.equal(st.r, r);
-    assert.equal(st.f, f);
-    assert.equal(env.el('moves').textContent, '2 moves');
   } finally {
     env.teardown();
   }

@@ -45,8 +45,6 @@
   var zOrder = [];
   var selected = -1;
   var drag = null;
-  var lastTap = null; // { id, t, snap } for double-tap-to-flip
-  var DOUBLE_TAP_MS = 300;
   var won = false;
   var moves = 0;
   var hints = 0;
@@ -366,7 +364,6 @@
     var pt = pos(e);
     var id = hit(pt.x, pt.y);
     if (id < 0) {
-      lastTap = null;
       select(-1);
       return;
     }
@@ -396,7 +393,6 @@
     if (!drag.moved) {
       if (Math.hypot(pt.x - drag.sx, pt.y - drag.sy) < 6) return;
       drag.moved = true;
-      lastTap = null;
       startClock();
       st.dragging = true;
       st.placed = false; // lifted off the board
@@ -405,41 +401,13 @@
     invalidate();
   });
 
-  function snapshotPiece(id) {
-    var st = states[id];
-    return { id: id, r: st.r, f: st.f, placed: st.placed, g0: st.g0 ? st.g0.slice() : null, pivot: st.pivot.slice(), moves: moves };
-  }
-
-  function restoreSnapshot(snap) {
-    var st = states[snap.id];
-    st.r = snap.r;
-    st.f = snap.f;
-    st.placed = snap.placed;
-    st.g0 = snap.g0 ? snap.g0.slice() : null;
-    st.pivot = snap.pivot.slice();
-    moves = snap.moves;
-  }
-
   function endDrag(e, cancelled) {
     if (!drag || e.pointerId !== drag.pointerId) return;
     var d = drag;
     drag = null;
     var pt = pos(e);
     if (!d.moved) {
-      if (cancelled) return;
-      var now = Date.now();
-      if (lastTap && lastTap.id === d.id && now - lastTap.t < DOUBLE_TAP_MS) {
-        // Double tap: undo whatever the first tap did (a rotation), then flip.
-        if (lastTap.snap) restoreSnapshot(lastTap.snap);
-        lastTap = null;
-        transformPiece(d.id, 'flip');
-        return;
-      }
-      lastTap = { id: d.id, t: now, snap: null };
-      if (d.wasSelected) { // tap the selected piece again to rotate
-        lastTap.snap = snapshotPiece(d.id);
-        transformPiece(d.id, 'rot');
-      }
+      if (!cancelled && d.wasSelected) transformPiece(d.id, 'rot'); // tap the selected piece again to rotate
       return;
     }
     if (cancelled) {
