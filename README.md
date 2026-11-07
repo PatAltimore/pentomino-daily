@@ -6,7 +6,7 @@ It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it h
 
 ## How it works
 
-- **Two puzzles a day.** The start page shows a NASA card and a Wikipedia card, with the time of any you have already solved. If a source has no usable picture, its card says so. NASA's picture falls back to the latest usable one from the last week, since some days are videos or copyrighted.
+- **Two puzzles a day.** The start page shows a NASA card and a Wikipedia card, with the time of any you have already solved. If a source has no usable picture, its card says so. NASA's picture falls back to the latest usable one from the last week (one request per day), since some days are videos or copyrighted.
 - **Same puzzle for everyone.** The puzzle source and date seed a random generator that tiles the grid with pentominoes (5x6 for portrait pictures, 6x5 for landscape). Pieces use distinct shapes where possible, and a solution always exists because the pieces are cut from a complete tiling.
 - **The picture is the hint.** Each piece shows its slice of the image, and it only counts when it sits in the right spot facing the right way. Pieces start scrambled in the tray, turned and flipped.
 - **Controls.** Drag a piece to move it. Tap a piece to select it, tap again to rotate. Rotate/Flip buttons act on the selected piece (keyboard: R, F, H for hint, Esc to deselect).

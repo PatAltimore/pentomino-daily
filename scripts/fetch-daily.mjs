@@ -54,20 +54,6 @@ export function pickApod(json, { allowCopyrighted = false } = {}) {
   };
 }
 
-/**
- * APOD has no picture some days (videos) or only a copyrighted one, so look back over a
- * short window of recent days (newest first) for the latest usable picture.
- */
-export function pickApodFromList(list, opts) {
-  const items = (Array.isArray(list) ? list : [list]).filter(Boolean);
-  items.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  for (const item of items) {
-    const pick = pickApod(item, opts);
-    if (pick) return pick;
-  }
-  return null;
-}
-
 /** Turn a Wikimedia "featured content" feed response into a pick, or null. */
 export function pickWikimedia(json, date) {
   const image = json && json.image;
@@ -98,10 +84,10 @@ export function pickWikimedia(json, date) {
   };
 }
 
-async function fetchJson(url) {
+async function fetchJson(url, timeoutMs = 20000) {
   const res = await fetch(url, {
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} from ${new URL(url).host}`);
   return res.json();
@@ -151,8 +137,18 @@ async function writeOutputs(key, pick, { buf, ext }) {
   return today;
 }
 
-function isoDaysAgo(days) {
-  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+function shiftDate(dateStr, days) {
+  return new Date(Date.parse(dateStr + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10);
+}
+
+/** NASA's API is sometimes slow, so give it a longer timeout and a second try. */
+async function fetchJsonRetry(url) {
+  try {
+    return await fetchJson(url, 45000);
+  } catch (err) {
+    console.warn('  ' + (err && err.message ? err.message : err) + ' - retrying once');
+    return fetchJson(url, 45000);
+  }
 }
 
 async function main() {
@@ -166,8 +162,19 @@ async function main() {
       'nasa',
       'NASA APOD',
       async () => {
-        const url = `https://api.nasa.gov/planetary/apod?api_key=${apiKey}&start_date=${isoDaysAgo(6)}&end_date=${isoDaysAgo(0)}`;
-        return pickApodFromList(await fetchJson(url), { allowCopyrighted });
+        // One request per day: NASA's date-range query is slow and times out. Start with
+        // today, then step back a few days if that day has no usable picture.
+        const base = `https://api.nasa.gov/planetary/apod?api_key=${apiKey}`;
+        let json = await fetchJsonRetry(base);
+        const pick = pickApod(json, { allowCopyrighted });
+        if (pick) return pick;
+        for (let back = 1; back <= 6; back++) {
+          const date = shiftDate(json.date, -1);
+          json = await fetchJsonRetry(`${base}&date=${date}`);
+          const older = pickApod(json, { allowCopyrighted });
+          if (older) return older;
+        }
+        return null;
       },
     ]);
   }
