@@ -267,31 +267,16 @@
     return best;
   }
 
+  // A piece counts as home when it covers exactly its home cells. Symmetric shapes
+  // (T, U, V, W, Z, I, X) can do that in a second orientation, which is just as correct.
   function isHome(piece, st) {
-    return (
-      !!st.placed &&
-      (st.r & 3) === 0 &&
-      !st.f &&
-      st.g0[0] === piece.home[0][0] &&
-      st.g0[1] === piece.home[0][1]
-    );
+    if (!st.placed) return false;
+    const home = new Set(piece.home.map((c) => c[0] + ',' + c[1]));
+    return cellsAt(piece, st.r, st.f, st.g0).every((c) => home.has(c[0] + ',' + c[1]));
   }
 
-  // Solved when every piece is on the board without overlap. Placement already keeps
-  // pieces inside the board, so 5 cells per piece means the board is exactly covered.
-  // Any valid tiling counts, not just the one the puzzle was generated from.
   function isSolved(pieces, states) {
-    const seen = new Set();
-    for (let i = 0; i < pieces.length; i++) {
-      const st = states[i];
-      if (!st.placed) return false;
-      for (const c of cellsAt(pieces[i], st.r, st.f, st.g0)) {
-        const k = c[0] + ',' + c[1];
-        if (seen.has(k)) return false;
-        seen.add(k);
-      }
-    }
-    return true;
+    return pieces.every((p, i) => isHome(p, states[i]));
   }
 
   // ----------------------------------------------------------------------- tray

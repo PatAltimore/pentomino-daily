@@ -490,14 +490,9 @@
     if (won || !pieces.length) return;
     var wrong = pieces.filter(function (p, i) { return !C.isHome(p, states[i]); });
     if (!wrong.length) return;
-    // Prefer pieces still in the tray: a piece already on the board may be part of a
-    // different valid tiling, so only point at those once the tray is empty.
-    var loose = wrong.filter(function (p) { return !states[p.id].placed; });
-    var pool = loose.length ? loose : wrong;
-    var sel = selected >= 0 ? pieces[selected] : null;
-    var pick = sel && pool.indexOf(sel) >= 0
-      ? sel
-      : pool[Math.floor(Math.random() * pool.length)];
+    var pick = selected >= 0 && !C.isHome(pieces[selected], states[selected])
+      ? pieces[selected]
+      : wrong[Math.floor(Math.random() * wrong.length)];
     startClock();
     hints++;
     hintId = pick.id;
@@ -514,6 +509,15 @@
 
   function finish() {
     won = true;
+    // A symmetric piece may sit in its mirrored/turned twin orientation; show it the
+    // way the picture is cut so the finished photo is exactly right.
+    pieces.forEach(function (p, i) {
+      var st = states[i];
+      st.r = 0;
+      st.f = false;
+      st.g0 = p.home[0].slice();
+      st.pivot = C.pivotForGrid(p, 0, false, st.g0);
+    });
     selected = -1;
     hintId = -1;
     stopClock();

@@ -129,6 +129,25 @@ test('every scrambled orientation can reach the solved one with rotate and flip'
   assert.equal(seen.size, 8);
 });
 
+test('symmetric pieces count as home in their twin orientation', () => {
+  const tiles = [];
+  for (let seed = 1; seed < 40 && tiles.length < 3; seed++) {
+    for (const t of C.generateTiling(5, 6, C.mulberry32(seed))) if (t.letter === 'T') tiles.push(t);
+  }
+  const p = C.buildPiece(tiles[0], 0);
+  const home = p.home.map((c) => c.join(',')).sort().join(';');
+  let twin = null;
+  for (let r = 0; r < 4 && !twin; r++)
+    for (let x = 0; x < 6 && !twin; x++)
+      for (let y = 0; y < 6 && !twin; y++) {
+        if (r === 0 && x === p.home[0][0] && y === p.home[0][1]) continue;
+        const cs = C.cellsAt(p, r, true, [x, y]).map((c) => c.join(',')).sort().join(';');
+        if (cs === home) twin = { r, g0: [x, y] };
+      }
+  assert.ok(twin, 'a mirrored T covers its own cells');
+  assert.ok(C.isHome(p, { placed: true, r: twin.r, f: true, g0: twin.g0 }));
+});
+
 test('snapping, solving and un-solving', () => {
   const cols = 5;
   const rows = 6;
@@ -149,15 +168,13 @@ test('snapping, solving and un-solving', () => {
   });
   assert.ok(C.isSolved(pieces, states));
 
-  // Un-placing a piece, or overlapping two pieces, is not solved.
-  states[0].placed = false;
+  // A piece in the right place but turned is not solved (even for symmetric shapes).
+  states[0].r = 1;
   assert.ok(!C.isSolved(pieces, states));
-  states[0].placed = true;
-  assert.ok(C.isSolved(pieces, states));
-  const g = states[1].g0;
-  states[1].g0 = states[0].g0;
+  states[0].r = 0;
+  states[0].f = true;
   assert.ok(!C.isSolved(pieces, states));
-  states[1].g0 = g;
+  states[0].f = false;
   assert.ok(C.isSolved(pieces, states));
 });
 
