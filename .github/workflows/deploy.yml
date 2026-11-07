@@ -1,0 +1,55 @@
+name: Fetch daily picture and deploy
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Once shortly after APOD rolls over (US Eastern midnight), plus a backup run.
+    # GitHub's scheduler is best-effort, so the second run catches a missed first one.
+    - cron: '20 5 * * *'
+    - cron: '50 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run tests
+        run: npm test
+
+      # Writes site/data/today.json and site/images/daily-<date>.<ext> for this build only.
+      # Nothing is committed, so the repo doesn't grow by a picture every day.
+      # If every source fails the job fails and the previous deployment stays live.
+      - name: Fetch today's picture
+        env:
+          NASA_API_KEY: ${{ secrets.NASA_API_KEY }}
+          # IMAGE_SOURCE: auto        # auto | apod | wikimedia
+          # ALLOW_COPYRIGHTED: 'true' # see README before turning this on
+        run: node scripts/fetch-daily.mjs
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

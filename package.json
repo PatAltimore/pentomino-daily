@@ -1,0 +1,14 @@
+{
+  "name": "pentomino-daily",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A daily jigsaw where the pieces are pentominoes and the picture is NASA's or Wikipedia's image of the day.",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "fetch": "node scripts/fetch-daily.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

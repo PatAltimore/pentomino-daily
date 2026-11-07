@@ -1,0 +1,6 @@
+node_modules/
+.DS_Store
+
+# Written by scripts/fetch-daily.mjs (CI builds these fresh on every deploy)
+site/data/today.json
+site/images/daily-*

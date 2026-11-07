@@ -1,0 +1,10 @@
+{
+  "sample": true,
+  "date": null,
+  "title": "Moonrise over the lake",
+  "description": "A hand-drawn placeholder scene so the game runs before the first daily picture has been fetched. On the live site this is replaced by NASA's Astronomy Picture of the Day or Wikipedia's Picture of the day.",
+  "credit": "Illustration made for this project",
+  "source": "Sample",
+  "pageUrl": "",
+  "image": "images/sample.svg"
+}
