@@ -9,7 +9,7 @@ It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it h
 - **Same puzzle for everyone.** The puzzle date seeds a random generator that tiles the grid with pentominoes (5x6 for portrait pictures, 6x5 for landscape). Pieces use distinct shapes where possible, and a solution always exists because the pieces are cut from a complete tiling.
 - **The picture is the hint.** Each piece shows its slice of the image, and it only counts when it sits in the right spot facing the right way. Pieces start scrambled in the tray, turned and flipped.
 - **Controls.** Drag a piece to move it. Tap a piece to select it, tap again to rotate. Rotate/Flip buttons act on the selected piece (keyboard: R, F, H for hint, Esc to deselect).
-- **Scoring.** Time plus moves. A hint shows where one piece belongs and adds 15 seconds.
+- **Scoring.** Time plus moves. A hint shows where one piece belongs and adds 15 seconds. Restart starts the puzzle over; once you have solved it, Restart starts a practice run that doesn't change your saved result.
 - **Sharing and streaks.** Results are copied or shared as text. Streaks and best time live in the browser's local storage; there are no accounts or backend.
 
 ## Project layout

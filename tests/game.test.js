@@ -137,13 +137,13 @@ function tap(canvas, x, y) {
   canvas.fire('pointerup', ptr(x, y));
 }
 
-async function solveByDragging(env) {
+async function solveByDragging(env, count) {
   const canvas = env.el('board');
   const { pieces, states, layout } = env.pento();
   const { s, bx, by } = layout;
   const toPx = (u) => [bx + u[0] * s, by + u[1] * s];
 
-  for (let i = 0; i < pieces.length; i++) {
+  for (let i = 0; i < (count === undefined ? pieces.length : count); i++) {
     const p = pieces[i];
     const st = states[i];
     const [sx, sy] = toPx(st.slot);
@@ -238,6 +238,70 @@ test('landscape pictures get a 6x5 board and tapping a selected piece rotates it
     assert.equal(st.r, (r0 + 1) & 3);
     env.el('btn-flip').fire('click');
     assert.equal(st.r, (4 - ((r0 + 1) & 3)) & 3);
+  } finally {
+    env.teardown();
+  }
+});
+
+test('restart puts every piece back in the tray, scrambled as at the start, and resets the counters', async () => {
+  const env = makeEnv();
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    const start = env.pento().states.map((st) => [st.r, st.f]);
+
+    env.el('btn-hint').fire('click');
+    await solveByDragging(env, 3);
+    assert.ok(env.pento().states.slice(0, 3).every((st) => st.placed));
+    assert.notEqual(env.el('moves').textContent, '0 moves');
+
+    env.el('btn-restart').fire('click');
+    const { states } = env.pento();
+    assert.ok(states.every((st) => !st.placed && !st.dragging), 'nothing left on the board');
+    states.forEach((st, i) => {
+      assert.equal(st.r, start[i][0]);
+      assert.equal(st.f, start[i][1]);
+      assert.equal(st.pivot[0], st.slot[0], 'back in its tray slot');
+      assert.equal(st.pivot[1], st.slot[1]);
+    });
+    assert.equal(env.el('moves').textContent, '0 moves');
+    assert.equal(env.el('timer').textContent, '0:00');
+    assert.equal(env.el('hints').hidden, true);
+
+    // ...and the puzzle is still playable after a restart.
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    assert.equal(env.pento().won, true);
+  } finally {
+    env.teardown();
+  }
+});
+
+test('restart after solving starts a practice run and keeps the saved result', async () => {
+  const storage = new Map();
+  const env = makeEnv({ storage });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    const key = [...storage.keys()].find((k) => k.startsWith('pd:done:'));
+    const saved = storage.get(key);
+    const stats = storage.get('pd:stats');
+
+    env.el('win').open = false; // close the result dialog
+    env.el('btn-restart').fire('click');
+    assert.equal(env.pento().won, false);
+    assert.ok(env.pento().states.every((st) => !st.placed), 'board is cleared');
+    assert.match(env.el('puzzle-date').textContent, /practice/);
+    assert.equal(env.el('btn-hint').disabled, false);
+
+    env.el('btn-hint').fire('click'); // makes this run's result differ from the saved one
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    assert.equal(env.pento().won, true);
+    assert.equal(storage.get(key), saved, "today's saved result is untouched");
+    assert.equal(storage.get('pd:stats'), stats, 'streak is untouched');
   } finally {
     env.teardown();
   }

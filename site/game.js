@@ -46,6 +46,7 @@
   var selected = -1;
   var drag = null;
   var won = false;
+  var practice = false; // replaying after a win: the new result is not saved
   var moves = 0;
   var hints = 0;
   var hintId = -1;
@@ -513,7 +514,7 @@
     stopClock();
     var seconds = Math.round(elapsed() + hints * C.HINT_PENALTY_SECONDS);
     var result = { seconds: seconds, moves: moves, hints: hints };
-    if (!params.has('seed')) {
+    if (!params.has('seed') && !practice) {
       store.set('pd:done:' + puzzleDate, result);
       store.set('pd:stats', C.updateStats(store.get('pd:stats'), puzzleDate, seconds));
     }
@@ -596,7 +597,12 @@
   }
 
   function restart() {
-    if (won || !pieces.length) return;
+    if (!pieces.length) return;
+    if (won) { // restarting a solved puzzle is a practice run; today's saved result stays as it is
+      won = false;
+      practice = true;
+      $('puzzle-date').textContent += ' · practice';
+    }
     resetPositions();
     layout();
     updateHud();
