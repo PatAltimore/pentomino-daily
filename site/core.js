@@ -30,6 +30,15 @@
     Z: [[0, 0], [1, 0], [1, 1], [1, 2], [2, 2]],
   };
 
+  // The 5 free tetrominoes (I, O, T, S and L; Z and J are mirror images of S and L).
+  const TETROMINOES = {
+    I: [[0, 0], [0, 1], [0, 2], [0, 3]],
+    O: [[0, 0], [1, 0], [0, 1], [1, 1]],
+    T: [[0, 0], [1, 0], [2, 0], [1, 1]],
+    S: [[1, 0], [2, 0], [0, 1], [1, 1]],
+    L: [[0, 0], [0, 1], [0, 2], [1, 2]],
+  };
+
   // ---------------------------------------------------------------- transforms
 
   function applyT(p, r, f) {
@@ -60,19 +69,32 @@
   }
 
   // All distinct orientations of every shape, each normalized and sorted row-major.
-  const ORIENTS = {};
-  const LETTER_BY_KEY = new Map();
-  for (const letter of Object.keys(SHAPES)) {
-    const seen = new Map();
-    for (let f = 0; f < 2; f++) {
-      for (let r = 0; r < 4; r++) {
-        const o = normalize(SHAPES[letter].map((c) => applyT(c, r, f)));
-        seen.set(key(o), o);
+  function orientsOf(shapes) {
+    const out = {};
+    for (const letter of Object.keys(shapes)) {
+      const seen = new Map();
+      for (let f = 0; f < 2; f++) {
+        for (let r = 0; r < 4; r++) {
+          const o = normalize(shapes[letter].map((c) => applyT(c, r, f)));
+          seen.set(key(o), o);
+        }
       }
+      out[letter] = Array.from(seen.values());
     }
-    ORIENTS[letter] = Array.from(seen.values());
-    for (const k of seen.keys()) LETTER_BY_KEY.set(k, letter);
+    return out;
   }
+
+  const ORIENTS = orientsOf(SHAPES);
+  const LETTER_BY_KEY = new Map();
+  for (const letter of Object.keys(ORIENTS)) {
+    for (const o of ORIENTS[letter]) LETTER_BY_KEY.set(key(o), letter);
+  }
+
+  // Piece sets a puzzle can be cut from.
+  const SHAPE_SETS = {
+    pentomino: { shapes: SHAPES, orients: ORIENTS, size: 5 },
+    tetromino: { shapes: TETROMINOES, orients: orientsOf(TETROMINOES), size: 4 },
+  };
 
   function identify(cells) {
     return LETTER_BY_KEY.get(key(normalize(cells))) || null;
@@ -113,19 +135,23 @@
   // --------------------------------------------------------------------- tiling
 
   /**
-   * Randomly tile a cols x rows grid with pentominoes (seeded, so the same rng
-   * state always gives the same tiling). Prefers using each shape at most once so
-   * the pieces have distinct silhouettes; falls back to allowing repeats.
+   * Randomly tile a cols x rows grid with pentominoes, or tetrominoes with
+   * opts.set = 'tetromino' (seeded, so the same rng state always gives the same
+   * tiling). Prefers using each shape at most once so the pieces have distinct
+   * silhouettes; falls back to allowing repeats.
    * Returns [{ letter, cells: [[x, y], ...] }] in row-major order of each piece's first cell.
    */
   function generateTiling(cols, rows, rng, opts) {
     const o = opts || {};
     const maxSteps = o.maxSteps || 20000;
     const attempts = o.attempts || 12;
+    const set = SHAPE_SETS[o.set || 'pentomino'];
+    if (!set) throw new Error('Unknown piece set ' + o.set);
+    const ORIENTS = set.orients;
     const area = cols * rows;
-    if (area % 5 !== 0) throw new Error('Grid area must be a multiple of 5');
-    const letters = Object.keys(SHAPES);
-    const needed = area / 5;
+    if (area % set.size !== 0) throw new Error('Grid area must be a multiple of ' + set.size);
+    const letters = Object.keys(set.orients);
+    const needed = area / set.size;
 
     for (let attempt = 0; attempt < attempts; attempt++) {
       const unique = needed <= letters.length && attempt < attempts - 2;
@@ -369,6 +395,8 @@
 
   return {
     SHAPES,
+    TETROMINOES,
+    SHAPE_SETS,
     ORIENTS,
     HINT_PENALTY_SECONDS: 15,
     applyT,

@@ -18,7 +18,7 @@
       <button id="btn-start-help" type="button" aria-label="How to play">?</button>
     </header>
     <main>
-      <p class="lead">Rebuild a picture from pentomino pieces. Pick today's puzzle:</p>
+      <p class="lead">Rebuild a picture from puzzle pieces. Pick today's puzzle:</p>
       <div id="puzzle-list" class="puzzle-list"></div>
       <p id="start-progress" class="muted"></p>
     </main>
@@ -74,10 +74,11 @@
       <ul>
         <li>A picture of the day has been cut into pentomino pieces. Rebuild it on the board.</li>
         <li><b>Drag</b> a piece onto the board. <b>Tap a piece</b> to select it, tap again to rotate.</li>
+        <li id="help-fixed" hidden>In this puzzle the pieces <b>can't be rotated or flipped</b>. They already face the right way, so just drag each one to its place.</li>
         <li>Use <b>Rotate</b> and <b>Flip</b> for the selected piece (keys: R and F on a keyboard).</li>
         <li>A piece snaps to the grid. It only counts when it sits in the right spot, facing the right way.</li>
         <li><b>Hint</b> shows where one piece belongs and adds 15 seconds to your time.</li>
-        <li>There are two puzzles a day, NASA's and Wikipedia's. Everyone gets the same ones.</li>
+        <li>There are four puzzles a day, from easy to challenging. Everyone gets the same ones.</li>
       </ul>
       <div class="row"><button type="submit" class="primary">Got it</button></div>
     </form>

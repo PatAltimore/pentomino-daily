@@ -3,10 +3,15 @@
  * Fetch today's two pictures and captions and write them into site/:
  *   site/images/daily-<key>-<date>.<ext>   the pictures (same origin, so the canvas can slice them)
  *   site/data/<key>.json                   title, caption, credit, link and the image path
- * where <key> is "nasa" (NASA's Astronomy Picture of the Day) or "wikipedia"
- * (Wikipedia's Picture of the day). The site's start page offers one puzzle for each.
+ * where <key> is one of
+ *   nasa        NASA's Astronomy Picture of the Day
+ *   wikipedia   Wikipedia's Picture of the day
+ *   tetromino   Wikipedia's Picture of the day from the day before (the easy puzzle)
+ *   fixed       Wikipedia's Picture of the day from two days before (the no-rotation puzzle)
+ * The site's start page offers one puzzle for each. The older Wikipedia pictures give the extra
+ * puzzles their own images without relying on NASA's flaky API.
  *
- * Set IMAGE_SOURCE=apod or IMAGE_SOURCE=wikimedia to fetch only one of them.
+ * Set IMAGE_SOURCE=apod or IMAGE_SOURCE=wikimedia to fetch only NASA's or only Wikipedia's.
  *
  * Environment:
  *   NASA_API_KEY        free key from https://api.nasa.gov (falls back to the rate-limited DEMO_KEY)
@@ -157,6 +162,24 @@ async function fetchJsonRetry(url) {
   }
 }
 
+async function fetchWikipedia(daysBack) {
+  const date = shiftDate(new Date().toISOString().slice(0, 10), -daysBack);
+  const [y, m, d] = date.split('-');
+  const urls = [
+    `https://en.wikipedia.org/api/rest_v1/feed/featured/${y}/${m}/${d}`,
+    `https://api.wikimedia.org/feed/v1/wikipedia/en/featured/${y}/${m}/${d}`,
+  ];
+  let lastError;
+  for (const url of urls) {
+    try {
+      return pickWikimedia(await fetchJson(url), date);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
+
 async function main() {
   const source = (process.env.IMAGE_SOURCE || 'auto').toLowerCase();
   const allowCopyrighted = process.env.ALLOW_COPYRIGHTED === 'true';
@@ -185,29 +208,13 @@ async function main() {
     ]);
   }
   if (source === 'auto' || source === 'wikimedia') {
-    attempts.push([
-      'wikipedia',
-      'Wikipedia Picture of the day',
-      async () => {
-        const now = new Date();
-        const y = now.getUTCFullYear();
-        const m = String(now.getUTCMonth() + 1).padStart(2, '0');
-        const d = String(now.getUTCDate()).padStart(2, '0');
-        const urls = [
-          `https://en.wikipedia.org/api/rest_v1/feed/featured/${y}/${m}/${d}`,
-          `https://api.wikimedia.org/feed/v1/wikipedia/en/featured/${y}/${m}/${d}`,
-        ];
-        let lastError;
-        for (const url of urls) {
-          try {
-            return pickWikimedia(await fetchJson(url), `${y}-${m}-${d}`);
-          } catch (err) {
-            lastError = err;
-          }
-        }
-        throw lastError;
-      },
-    ]);
+    for (const [key, name, daysBack] of [
+      ['wikipedia', 'Wikipedia Picture of the day', 0],
+      ['tetromino', 'Wikipedia Picture of the day (1 day back)', 1],
+      ['fixed', 'Wikipedia Picture of the day (2 days back)', 2],
+    ]) {
+      attempts.push([key, name, () => fetchWikipedia(daysBack)]);
+    }
   }
 
   let saved = 0;

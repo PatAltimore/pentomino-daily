@@ -148,6 +148,29 @@ test('symmetric pieces count as home in their twin orientation', () => {
   assert.ok(C.isHome(p, { placed: true, r: twin.r, f: true, g0: twin.g0 }));
 });
 
+test('tetromino tilings cover the board with 4-cell pieces', () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    for (const [cols, rows] of [[4, 6], [6, 4]]) {
+      const tiles = C.generateTiling(cols, rows, C.mulberry32(seed), { set: 'tetromino' });
+      assert.equal(tiles.length, 6);
+      const seen = new Set();
+      for (const t of tiles) {
+        assert.equal(t.cells.length, 4);
+        assert.ok(C.SHAPE_SETS.tetromino.orients[t.letter], 'a real tetromino: ' + t.letter);
+        for (const c of t.cells) {
+          assert.ok(c[0] >= 0 && c[0] < cols && c[1] >= 0 && c[1] < rows);
+          seen.add(c.join(','));
+        }
+      }
+      assert.equal(seen.size, cols * rows, 'every cell covered exactly once');
+    }
+  }
+  assert.equal(C.SHAPE_SETS.tetromino.orients.O.length, 1);
+  assert.equal(C.SHAPE_SETS.tetromino.orients.I.length, 2);
+  assert.throws(() => C.generateTiling(5, 6, C.mulberry32(1), { set: 'tetromino' }), /multiple of 4/);
+  assert.throws(() => C.generateTiling(4, 6, C.mulberry32(1)), /multiple of 5/);
+});
+
 test('share text names the puzzle when a source is given', () => {
   assert.match(C.shareText({ date: '2026-11-07', source: 'NASA picture', seconds: 5, moves: 1, hints: 0 }), /Daily · NASA picture · Nov 7/);
 });

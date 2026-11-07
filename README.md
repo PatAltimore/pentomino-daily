@@ -1,12 +1,18 @@
 # Pentomino Daily
 
-Two daily jigsaws. A start page lets you pick NASA's Astronomy Picture of the Day or Wikipedia's Picture of the day, each cut into **pentomino-shaped pieces**. Drag, rotate and flip the pieces to rebuild it. Everyone gets the same two puzzles each day, and there is a Wordle-style share button.
+Four daily jigsaws at different levels. A start page lets you pick one; each is a picture of the day cut into **pentomino or tetromino pieces**. Drag, rotate and flip the pieces to rebuild it. Everyone gets the same two puzzles each day, and there is a Wordle-style share button.
 
 It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it hosts for free on GitHub Pages.
 
 ## How it works
 
-- **Two puzzles a day.** The start page shows a NASA card and a Wikipedia card, with the time of any you have already solved. If a source has no usable picture, its card says so. NASA's picture falls back to the latest usable one from the last week (one request per day), since some days are videos or copyrighted.
+- **Four puzzles a day.** Each has its own picture, and its own saved result:
+  - **Easy, Tetromino puzzle**: 4-cell pieces on a 4x6 board (6 pieces). Wikipedia's Picture of the day from yesterday.
+  - **Medium, NASA picture**: pentominoes on a 5x6 board, using the Astronomy Picture of the Day.
+  - **Medium, Wikipedia picture**: pentominoes on a 5x6 board, using today's Picture of the day.
+  - **Challenge, Fixed pieces**: 8 pentominoes on a 5x8 board that can't be rotated or flipped. They start upright, so the work is finding where each belongs. Wikipedia's Picture of the day from two days ago.
+
+  (Landscape pictures swap the board's width and height.) The start page shows the time of any you have already solved, and says "Not available today" for a puzzle whose picture couldn't be fetched. NASA's picture falls back to the latest usable one from the last week (one request per day), since some days are videos or copyrighted. The deploy also remembers the last pictures it fetched, so an outage on NASA's side keeps the previous picture instead of removing the puzzle.
 - **Same puzzle for everyone.** The puzzle source and date seed a random generator that tiles the grid with pentominoes (5x6 for portrait pictures, 6x5 for landscape). Pieces use distinct shapes where possible, and a solution always exists because the pieces are cut from a complete tiling.
 - **The picture is the hint.** Each piece shows its slice of the image, and it only counts when it sits in the right spot facing the right way. Pieces start scrambled in the tray, turned and flipped.
 - **Controls.** Drag a piece to move it. Tap a piece to select it, tap again to rotate. Rotate/Flip buttons act on the selected piece (keyboard: R, F, H for hint, Esc to deselect).
@@ -18,12 +24,12 @@ It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it h
 ```
 site/                  the website (this folder is what gets deployed)
   index.html style.css
-  core.js              pure game logic: pieces, tiling, snapping, tray layout, stats (no DOM)
+  core.js              pure game logic: pieces (pentomino and tetromino sets), tiling, snapping, tray layout, stats (no DOM)
   game.js              canvas rendering, input, timer, dialogs
   data/sample.json     placeholder puzzle offered on the start page until real pictures have been fetched
   images/sample.svg
 scripts/
-  fetch-daily.mjs      downloads today's NASA and Wikipedia pictures + captions into site/
+  fetch-daily.mjs      downloads the four puzzle pictures + captions into site/
   serve.mjs            tiny local web server
 tests/                 node:test suites (logic, fetch parsing, and a fake-DOM play-through)
 .github/workflows/deploy.yml   runs tests, fetches today's picture, deploys to GitHub Pages
@@ -39,7 +45,7 @@ npm test        # runs all tests
 npm run fetch   # pulls today's real pictures into site/ (needs internet)
 ```
 
-Handy URL parameters while developing: `#nasa` / `#wikipedia` open a puzzle directly (no hash shows the start page), `?seed=anything` plays a different puzzle (and doesn't record results), `?reset` clears today's "solved" record, `?debug` exposes `window.__pento` for poking at state.
+Handy URL parameters while developing: `#tetromino` / `#nasa` / `#wikipedia` / `#fixed` open a puzzle directly (no hash shows the start page), `?seed=anything` plays a different puzzle (and doesn't record results), `?reset` clears today's "solved" record, `?debug` exposes `window.__pento` for poking at state.
 
 ## Deploy to GitHub Pages
 
@@ -55,7 +61,7 @@ The workflow runs on every push and twice a day. Each run executes the tests, fe
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `NASA_API_KEY` | `DEMO_KEY` | Your free NASA API key |
-| `IMAGE_SOURCE` | `auto` | `auto` (both), `apod`, or `wikimedia` (fetch just one) |
+| `IMAGE_SOURCE` | `auto` | `auto` (all), `apod` (NASA only), or `wikimedia` (the three Wikipedia pictures only) |
 | `ALLOW_COPYRIGHTED` | off | Set to `true` to include APOD pictures that carry a photographer's copyright |
 
 ## A note on image rights

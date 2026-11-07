@@ -34,11 +34,16 @@
 
   // Which puzzle to play comes from the URL hash (#nasa, #wikipedia, #sample).
   // No hash means the start page, where the player picks one.
+  // Each puzzle: which piece set it is cut from, board size ([portrait cols, rows]; landscape
+  // pictures swap them) and whether pieces may be rotated and flipped.
   var PUZZLES = {
-    nasa: { name: 'NASA picture', icon: '🚀', blurb: 'Astronomy Picture of the Day', file: 'data/nasa.json' },
-    wikipedia: { name: 'Wikipedia picture', icon: '📖', blurb: 'Picture of the day', file: 'data/wikipedia.json' },
+    tetromino: { name: 'Tetromino puzzle', icon: '🧱', level: 'Easy', blurb: '4-cell pieces, 6 pieces', file: 'data/tetromino.json', set: 'tetromino', grid: [4, 6], fixed: false },
+    nasa: { name: 'NASA picture', icon: '🚀', level: 'Medium', blurb: 'Astronomy Picture of the Day', file: 'data/nasa.json', set: 'pentomino', grid: [5, 6], fixed: false },
+    wikipedia: { name: 'Wikipedia picture', icon: '📖', level: 'Medium', blurb: 'Picture of the day', file: 'data/wikipedia.json', set: 'pentomino', grid: [5, 6], fixed: false },
+    fixed: { name: 'Fixed pieces', icon: '📌', level: 'Challenge', blurb: '8 pieces, no rotating or flipping', file: 'data/fixed.json', set: 'pentomino', grid: [5, 8], fixed: true },
   };
-  var SAMPLE = { name: 'Sample picture', icon: '🌙', blurb: 'Placeholder until real pictures are fetched', file: 'data/sample.json' };
+  var SAMPLE = { name: 'Sample picture', icon: '🌙', level: '', blurb: 'Placeholder until real pictures are fetched', file: 'data/sample.json', set: 'pentomino', grid: [5, 6], fixed: false };
+  var puzzleCfg = PUZZLES[(location.hash || '').replace(/^#/, '')] || SAMPLE;
   var puzzleKey = (location.hash || '').replace(/^#/, '');
 
   // ----------------------------------------------------------------- game state
@@ -299,7 +304,7 @@
 
   // ----------------------------------------------------------------- piece moves
   function transformPiece(id, kind) {
-    if (won || id < 0) return;
+    if (won || id < 0 || puzzleCfg.fixed) return;
     var st = states[id];
     var p = pieces[id];
     var nr = kind === 'rot' ? (st.r + 1) & 3 : (4 - st.r) & 3; // flip mirrors left-right on screen
@@ -575,7 +580,7 @@
     if (!lastResult) return;
     var text = C.shareText({
       date: puzzleDate,
-      source: data.sample ? '' : (PUZZLES[puzzleKey] || {}).name,
+      source: data.sample ? '' : puzzleCfg.name,
       seconds: lastResult.seconds,
       moves: lastResult.moves,
       hints: lastResult.hints,
@@ -627,13 +632,16 @@
 
   function newPuzzle() {
     var landscape = img.naturalWidth / img.naturalHeight >= 1.1;
-    cols = landscape ? 6 : 5;
-    rows = landscape ? 5 : 6;
+    cols = landscape ? puzzleCfg.grid[1] : puzzleCfg.grid[0];
+    rows = landscape ? puzzleCfg.grid[0] : puzzleCfg.grid[1];
     var seedKey = params.get('seed') || puzzleKey + ':' + puzzleDate;
     var rng = C.mulberry32(C.hashString('pentomino-daily:' + seedKey + ':' + cols + 'x' + rows));
-    pieces = C.generateTiling(cols, rows, rng).map(function (t, i) { return C.buildPiece(t, i); });
+    pieces = C.generateTiling(cols, rows, rng, { set: puzzleCfg.set }).map(function (t, i) { return C.buildPiece(t, i); });
     trayOrder = C.shuffle(pieces.map(function (p) { return p.id; }), rng);
     initial = pieces.map(function () { return { r: Math.floor(rng() * 4), f: rng() < 0.5 }; });
+    if (puzzleCfg.fixed) { // pieces start the right way up and stay that way
+      initial = pieces.map(function () { return { r: 0, f: false }; });
+    }
     resetPositions();
   }
 
@@ -699,7 +707,7 @@
       name.textContent = it.meta.name;
       var sub = document.createElement('span');
       sub.className = 'sub';
-      sub.textContent = it.meta.blurb;
+      sub.textContent = (it.meta.level ? it.meta.level + ' · ' : '') + it.meta.blurb;
       info.append(name, sub);
       var badge = document.createElement('span');
       badge.className = 'badge';
@@ -752,6 +760,11 @@
     window.addEventListener('hashchange', function () { location.reload(); });
     if (!PUZZLES[puzzleKey] && puzzleKey !== 'sample') { showStart(); return; }
     $('app').hidden = false;
+    if (puzzleCfg.fixed) {
+      $('btn-rotate').hidden = true;
+      $('btn-flip').hidden = true;
+      $('help-fixed').hidden = false;
+    }
     layout();
     new ResizeObserver(function () { layout(); }).observe(stage);
 
@@ -765,7 +778,7 @@
         img = im;
         newPuzzle();
         statusEl.hidden = true;
-        $('puzzle-date').textContent = (data.sample ? 'Sample puzzle · ' : (PUZZLES[puzzleKey].name + ' · ')) + C.formatDateShort(puzzleDate);
+        $('puzzle-date').textContent = (data.sample ? 'Sample puzzle · ' : (puzzleCfg.name + ' · ')) + C.formatDateShort(puzzleDate);
 
         if (params.has('reset')) store.remove(doneKey(puzzleKey, puzzleDate));
         var done = params.has('seed') ? null : store.get(doneKey(puzzleKey, puzzleDate));

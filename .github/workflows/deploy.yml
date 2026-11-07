@@ -45,11 +45,13 @@ jobs:
           path: |
             site/data/nasa.json
             site/data/wikipedia.json
+            site/data/tetromino.json
+            site/data/fixed.json
             site/images/daily-*
           key: daily-${{ github.run_id }}
           restore-keys: daily-
 
-      # Writes site/data/{nasa,wikipedia}.json and site/images/daily-<key>-<date>.<ext> for this build only.
+      # Writes site/data/{nasa,wikipedia,tetromino,fixed}.json and site/images/daily-<key>-<date>.<ext> for this build only.
       # Nothing is committed, so the repo doesn't grow by a picture every day.
       # If both sources fail the job fails and the previous deployment stays live.
       - name: Fetch today's pictures

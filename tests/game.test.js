@@ -411,3 +411,84 @@ test('each picture has its own puzzle and its own saved result', async () => {
     env.teardown();
   }
 });
+
+
+test('the tetromino puzzle is a 4x6 board of 4-cell pieces', async () => {
+  const files = { 'data/tetromino.json': puzzleFile('tetromino', 'A Fox', '2026-11-06') };
+  const env = makeEnv({ hash: '#tetromino', files });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    const { pieces, layout } = env.pento();
+    assert.equal(layout.cols, 4);
+    assert.equal(layout.rows, 6);
+    assert.equal(pieces.length, 6);
+    assert.ok(pieces.every((p) => p.home.length === 4));
+    env.el('help').open = false;
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    assert.equal(env.pento().won, true);
+  } finally {
+    env.teardown();
+  }
+});
+
+test('the fixed-pieces puzzle starts upright and cannot rotate or flip', async () => {
+  const files = { 'data/fixed.json': puzzleFile('fixed', 'A Fox', '2026-11-05') };
+  const env = makeEnv({ hash: '#fixed', files });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    const { pieces, states, layout } = env.pento();
+    assert.equal(layout.cols * layout.rows, 40);
+    assert.equal(pieces.length, 8);
+    assert.ok(states.every((st) => st.r === 0 && !st.f), 'every piece starts in its home orientation');
+    assert.equal(env.el('btn-rotate').hidden, true);
+    assert.equal(env.el('btn-flip').hidden, true);
+
+    // Selecting a piece and trying to turn it (button, tap, key) changes nothing.
+    const canvas = env.el('board');
+    const { s, bx, by } = layout;
+    const st = states[0];
+    const x = bx + st.slot[0] * s;
+    const y = by + st.slot[1] * s;
+    tap(canvas, x, y);
+    tap(canvas, x, y);
+    env.el('btn-rotate').fire('click');
+    env.el('btn-flip').fire('click');
+    (env.docHandlers.keydown || []).forEach((fn) => fn({ key: 'r' }));
+    assert.ok(st.r === 0 && !st.f);
+
+    // Dragging each piece straight to its spot solves it, with no rotation needed.
+    env.el('help').open = false;
+    for (let i = 0; i < pieces.length; i++) {
+      const p = pieces[i];
+      const q = states[i];
+      const [sx, sy] = [bx + q.slot[0] * s, by + q.slot[1] * s];
+      const [tx, ty] = [bx + Core.pivotForGrid(p, 0, false, p.home[0])[0] * s, by + Core.pivotForGrid(p, 0, false, p.home[0])[1] * s];
+      canvas.fire('pointerdown', ptr(sx, sy));
+      canvas.fire('pointermove', ptr((sx + tx) / 2, (sy + ty) / 2));
+      canvas.fire('pointermove', ptr(tx + s * 0.2, ty - s * 0.15));
+      canvas.fire('pointerup', ptr(tx + s * 0.2, ty - s * 0.15));
+      assert.equal(q.placed, true, 'piece ' + i + ' placed');
+    }
+    await until(() => env.el('win').open, 4000);
+    assert.equal(env.pento().won, true);
+  } finally {
+    env.teardown();
+  }
+});
+
+test('the start page lists all four puzzles with their levels', async () => {
+  const files = {
+    'data/tetromino.json': puzzleFile('tetromino', 'A', '2026-11-06'),
+    'data/nasa.json': puzzleFile('nasa', 'B', '2026-11-07'),
+    'data/wikipedia.json': puzzleFile('wikipedia', 'C', '2026-11-07'),
+    'data/fixed.json': puzzleFile('fixed', 'D', '2026-11-05'),
+  };
+  const env = makeEnv({ hash: '', files });
+  try {
+    await until(() => env.el('start-progress').textContent);
+    assert.equal(env.el('start-progress').textContent, '0 of 4 solved today');
+  } finally {
+    env.teardown();
+  }
+});
