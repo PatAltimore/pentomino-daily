@@ -568,6 +568,7 @@
     }
     var bits = ['⏱ ' + C.formatTime(result.seconds), '🔄 ' + result.moves];
     if (result.hints) bits.push('💡 ' + result.hints);
+    if (practice) bits.push('🔁 retry');
     if (stats.streak) bits.push('🔥 ' + stats.streak + '-day streak');
     if (stats.best !== null && stats.best !== undefined) bits.push('best ' + C.formatTime(stats.best));
     $('win-stats').textContent = bits.join(' · ');
@@ -580,6 +581,7 @@
     if (!lastResult) return;
     var text = C.shareText({
       date: puzzleDate,
+      retry: practice,
       source: data.sample ? '' : puzzleCfg.name,
       seconds: lastResult.seconds,
       moves: lastResult.moves,

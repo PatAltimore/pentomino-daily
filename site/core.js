@@ -389,7 +389,7 @@
     const parts = ['⏱ ' + formatTime(o.seconds), '🔄 ' + o.moves + (o.moves === 1 ? ' move' : ' moves')];
     if (o.hints) parts.push('💡 ' + o.hints + (o.hints === 1 ? ' hint' : ' hints'));
     return (
-      '🧩 Pentomino Daily · ' + (o.source ? o.source + ' · ' : '') + formatDateShort(o.date) + '\n' + parts.join(' · ') + (o.url ? '\n' + o.url : '')
+      '🧩 Pentomino Daily · ' + (o.source ? o.source + ' · ' : '') + formatDateShort(o.date) + (o.retry ? ' · 🔁 retry' : '') + '\n' + parts.join(' · ') + (o.url ? '\n' + o.url : '')
     );
   }
 

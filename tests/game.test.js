@@ -317,6 +317,10 @@ test('restart after solving starts a practice run and keeps the saved result', a
     assert.equal(env.pento().won, true);
     assert.equal(storage.get(key), saved, "today's saved result is untouched");
     assert.equal(storage.get('pd:stats'), stats, 'streak is untouched');
+    assert.match(env.el('win-stats').textContent, /retry/);
+    env.el('btn-share').fire('click');
+    await until(() => env.clipboard.text);
+    assert.match(env.clipboard.text.split('\n')[0], /retry/, 'shared text says it was a retry');
   } finally {
     env.teardown();
   }

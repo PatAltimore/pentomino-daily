@@ -175,6 +175,12 @@ test('share text names the puzzle when a source is given', () => {
   assert.match(C.shareText({ date: '2026-11-07', source: 'NASA picture', seconds: 5, moves: 1, hints: 0 }), /Daily · NASA picture · Nov 7/);
 });
 
+test('share text marks a retry', () => {
+  const t = C.shareText({ date: '2026-11-07', source: 'NASA picture', seconds: 65, moves: 3, hints: 0, retry: true });
+  assert.match(t.split('\n')[0], /Nov 7 · 🔁 retry$/);
+  assert.doesNotMatch(C.shareText({ date: '2026-11-07', seconds: 65, moves: 3, hints: 0 }), /retry/);
+});
+
 test('snapping, solving and un-solving', () => {
   const cols = 5;
   const rows = 6;
