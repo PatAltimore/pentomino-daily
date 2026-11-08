@@ -349,28 +349,49 @@ test('a drop that does not fit puts the piece back', async () => {
 });
 
 
-const puzzleFile = (key, title, date) => ({ key, date, title, image: 'images/' + key + '.jpg', source: key, credit: '', description: '' });
+// ---- helpers for the day-based puzzle layout (data/manifest.json + data/<day>/<key>.json)
+const pad2 = (n) => String(n).padStart(2, '0');
+const localToday = () => {
+  const d = new Date();
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+};
+const shiftDay = (day, n) => new Date(Date.parse(day + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+const ALL_KEYS = ['nasa', 'wikipedia', 'tetromino', 'fixed'];
 
-test('the start page offers both puzzles and shows which are solved', async () => {
-  const files = {
-    'data/nasa.json': puzzleFile('nasa', 'A Nebula', '2026-11-07'),
-    'data/wikipedia.json': puzzleFile('wikipedia', 'A Fox', '2026-11-07'),
-  };
-  const storage = new Map([['pd:done:nasa:2026-11-07', JSON.stringify({ seconds: 125, moves: 20, hints: 0 })]]);
-  const env = makeEnv({ hash: '', storage, files });
+/** Files for a fake server: `days` maps a day to the puzzle keys published for it. */
+function publish(days) {
+  const files = {};
+  const entries = {};
+  for (const [day, keys] of Object.entries(days)) {
+    entries[day] = keys;
+    for (const key of keys) {
+      files['data/' + day + '/' + key + '.json'] = {
+        key, day, date: day, title: 'T ' + key + ' ' + day, image: 'images/' + key + '.jpg', source: key, credit: '', description: '',
+      };
+    }
+  }
+  files['data/manifest.json'] = { today: localToday(), days: Object.keys(entries).sort().reverse(), entries };
+  return files;
+}
+
+test('the start page offers all four puzzles and shows which are solved today', async () => {
+  const today = localToday();
+  const storage = new Map([['pd:done:nasa:' + today, JSON.stringify({ seconds: 125, moves: 20, hints: 0 })]]);
+  const env = makeEnv({ hash: '', storage, files: publish({ [today]: ALL_KEYS }) });
   try {
     await until(() => env.el('start-progress').textContent);
     assert.equal(env.el('start').hidden, false, 'start page is shown');
-    assert.equal(env.el('start-progress').textContent, '1 of 2 solved today');
+    assert.equal(env.el('start-progress').textContent, '1 of 4 solved today');
+    assert.match(env.el('day-label').textContent, /^Today/);
     assert.equal(env.pento().pieces.length, 0);
   } finally {
     env.teardown();
   }
 });
 
-test('a puzzle that could not be fetched is shown as unavailable', async () => {
-  const files = { 'data/wikipedia.json': puzzleFile('wikipedia', 'A Fox', '2026-11-07') };
-  const env = makeEnv({ hash: '', files });
+test('a puzzle that was not published is shown as unavailable', async () => {
+  const today = localToday();
+  const env = makeEnv({ hash: '', files: publish({ [today]: ['wikipedia'] }) });
   try {
     await until(() => env.el('start-progress').textContent);
     assert.equal(env.el('start-progress').textContent, '0 of 1 solved today');
@@ -379,7 +400,7 @@ test('a puzzle that could not be fetched is shown as unavailable', async () => {
   }
 });
 
-test('with no fetched pictures (local development) the start page offers the sample', async () => {
+test('with nothing published (local development) the start page offers the sample', async () => {
   const env = makeEnv({ hash: '' });
   try {
     await until(() => env.el('start-progress').textContent);
@@ -389,13 +410,85 @@ test('with no fetched pictures (local development) the start page offers the sam
   }
 });
 
-test('each picture has its own puzzle and its own saved result', async () => {
-  const files = {
-    'data/nasa.json': puzzleFile('nasa', 'A Nebula', '2026-11-07'),
-    'data/wikipedia.json': puzzleFile('wikipedia', 'A Fox', '2026-11-07'),
-  };
+test("the player's local date picks the day, and days in their future are not offered", async () => {
+  const today = localToday();
+  const files = publish({
+    [shiftDay(today, 1)]: ALL_KEYS, // tomorrow: published for time zones ahead of UTC
+    [today]: ALL_KEYS,
+    [shiftDay(today, -1)]: ALL_KEYS,
+  });
+  const env = makeEnv({ hash: '', files });
+  try {
+    await until(() => env.el('start-progress').textContent);
+    assert.match(env.el('day-label').textContent, /^Today/);
+    assert.equal(env.el('day-next').disabled, true, 'cannot go past today');
+    assert.equal(env.el('day-prev').disabled, false, 'yesterday is available');
+    env.el('day-prev').fire('click');
+    assert.equal(env.hashLog.at(-1), '#' + shiftDay(today, -1), 'earlier day opens its list');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('an earlier day lists its own puzzles and results, and can be played', async () => {
+  const today = localToday();
+  const yesterday = shiftDay(today, -1);
+  const files = publish({ [today]: ALL_KEYS, [yesterday]: ALL_KEYS });
+  const storage = new Map([['pd:done:fixed:' + yesterday, JSON.stringify({ seconds: 300, moves: 30, hints: 0 })]]);
+  const env = makeEnv({ hash: '#' + yesterday, storage, files });
+  try {
+    await until(() => env.el('start-progress').textContent);
+    assert.match(env.el('day-label').textContent, /^Yesterday/);
+    assert.equal(env.el('start-progress').textContent, '1 of 4 solved', "yesterday's list, not today's");
+    assert.equal(env.el('day-next').disabled, false, 'can go forward to today');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('an earlier day is saved but does not touch the streak, and Back returns to that day', async () => {
+  const today = localToday();
+  const yesterday = shiftDay(today, -1);
+  const files = publish({ [today]: ALL_KEYS, [yesterday]: ALL_KEYS });
   const storage = new Map();
-  const env = makeEnv({ hash: '#nasa', storage, files });
+  const env = makeEnv({ hash: '#' + yesterday + '/tetromino', storage, files });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    assert.match(env.el('puzzle-date').textContent, /earlier day/);
+    env.el('help').open = false;
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    assert.ok(storage.has('pd:done:tetromino:' + yesterday), 'result saved for that day');
+    assert.ok(!storage.has('pd:stats'), 'streak and best time untouched by an earlier day');
+    env.el('btn-more').fire('click');
+    assert.equal(env.hashLog.at(-1), '#' + yesterday, 'Back goes to that day, not today');
+  } finally {
+    env.teardown();
+  }
+});
+
+test("today's puzzle still counts toward the streak, and Back returns to today", async () => {
+  const today = localToday();
+  const storage = new Map();
+  const env = makeEnv({ hash: '#' + today + '/nasa', storage, files: publish({ [today]: ALL_KEYS, [shiftDay(today, -1)]: ALL_KEYS }) });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    assert.doesNotMatch(env.el('puzzle-date').textContent, /earlier day/);
+    env.el('help').open = false;
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    assert.equal(JSON.parse(storage.get('pd:stats')).streak, 1);
+    env.el('btn-more').fire('click');
+    assert.equal(env.hashLog.at(-1), '', 'Back goes to the start page for today');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('each picture has its own puzzle and its own saved result', async () => {
+  const today = localToday();
+  const storage = new Map();
+  const env = makeEnv({ hash: '#nasa', storage, files: publish({ [today]: ALL_KEYS }) });
   try {
     await until(() => env.pento() && env.pento().pieces.length > 0);
     assert.equal(env.el('app').hidden, false);
@@ -403,8 +496,8 @@ test('each picture has its own puzzle and its own saved result', async () => {
     env.el('help').open = false;
     await solveByDragging(env);
     await until(() => env.el('win').open, 4000);
-    assert.ok(storage.has('pd:done:nasa:2026-11-07'));
-    assert.ok(!storage.has('pd:done:wikipedia:2026-11-07'), 'the other puzzle is still unsolved');
+    assert.ok(storage.has('pd:done:nasa:' + today));
+    assert.ok(!storage.has('pd:done:wikipedia:' + today), 'the other puzzle is still unsolved');
     env.el('btn-share').fire('click');
     await until(() => env.clipboard.text);
     assert.match(env.clipboard.text, /NASA picture/);
@@ -416,10 +509,8 @@ test('each picture has its own puzzle and its own saved result', async () => {
   }
 });
 
-
 test('the tetromino puzzle is a 4x6 board of 4-cell pieces', async () => {
-  const files = { 'data/tetromino.json': puzzleFile('tetromino', 'A Fox', '2026-11-06') };
-  const env = makeEnv({ hash: '#tetromino', files });
+  const env = makeEnv({ hash: '#tetromino', files: publish({ [localToday()]: ALL_KEYS }) });
   try {
     await until(() => env.pento() && env.pento().pieces.length > 0);
     const { pieces, layout } = env.pento();
@@ -437,8 +528,7 @@ test('the tetromino puzzle is a 4x6 board of 4-cell pieces', async () => {
 });
 
 test('the fixed-pieces puzzle starts upright and cannot rotate or flip', async () => {
-  const files = { 'data/fixed.json': puzzleFile('fixed', 'A Fox', '2026-11-05') };
-  const env = makeEnv({ hash: '#fixed', files });
+  const env = makeEnv({ hash: '#fixed', files: publish({ [localToday()]: ALL_KEYS }) });
   try {
     await until(() => env.pento() && env.pento().pieces.length > 0);
     const { pieces, states, layout } = env.pento();
@@ -481,18 +571,3 @@ test('the fixed-pieces puzzle starts upright and cannot rotate or flip', async (
   }
 });
 
-test('the start page lists all four puzzles with their levels', async () => {
-  const files = {
-    'data/tetromino.json': puzzleFile('tetromino', 'A', '2026-11-06'),
-    'data/nasa.json': puzzleFile('nasa', 'B', '2026-11-07'),
-    'data/wikipedia.json': puzzleFile('wikipedia', 'C', '2026-11-07'),
-    'data/fixed.json': puzzleFile('fixed', 'D', '2026-11-05'),
-  };
-  const env = makeEnv({ hash: '', files });
-  try {
-    await until(() => env.el('start-progress').textContent);
-    assert.equal(env.el('start-progress').textContent, '0 of 4 solved today');
-  } finally {
-    env.teardown();
-  }
-});

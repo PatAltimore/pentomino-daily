@@ -45,7 +45,6 @@ header {
 h1 { margin: 0; font-size: 1.15rem; letter-spacing: 0.01em; }
 .title { display: flex; flex-direction: column; margin-right: auto; }
 #btn-back { margin-right: 8px; font-size: 1.1rem; }
-#start-date { color: var(--muted); font-size: 0.8rem; }
 #puzzle-date { color: var(--muted); font-size: 0.8rem; }
 
 .hud { display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; font-size: 0.95rem; }
@@ -142,3 +141,7 @@ dialog p { margin: 0; }
 .puzzle-card.done .badge { color: #7ee2a8; }
 .puzzle-card:disabled { opacity: 0.5; }
 #start-progress { text-align: center; }
+
+.daynav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 4px; }
+.daynav button { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 1.4rem; line-height: 1; }
+#day-label { min-width: 9.5em; text-align: center; font-weight: 700; }

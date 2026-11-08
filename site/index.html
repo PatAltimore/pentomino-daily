@@ -13,12 +13,16 @@
     <header>
       <div class="title">
         <h1>Pentomino Daily</h1>
-        <span id="start-date"></span>
       </div>
       <button id="btn-start-help" type="button" aria-label="How to play">?</button>
     </header>
     <main>
-      <p class="lead">Rebuild a picture from puzzle pieces. Pick today's puzzle:</p>
+      <div class="daynav">
+        <button id="day-prev" type="button" aria-label="Earlier day">&#x2039;</button>
+        <span id="day-label"></span>
+        <button id="day-next" type="button" aria-label="Later day">&#x203A;</button>
+      </div>
+      <p class="lead">Rebuild a picture from puzzle pieces. Pick a puzzle:</p>
       <div id="puzzle-list" class="puzzle-list"></div>
       <p id="start-progress" class="muted"></p>
     </main>

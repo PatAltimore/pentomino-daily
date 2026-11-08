@@ -360,6 +360,37 @@
     return Math.round(Date.parse(dateStr + 'T00:00:00Z') / 86400000);
   }
 
+  /**
+   * Which of the published days is "today" for a player whose local date is `local`: the newest
+   * day that is not in their future, or the oldest one if every day is.
+   */
+  function pickDay(days, local) {
+    const sorted = days.slice().sort();
+    if (!sorted.length) return null;
+    let best = null;
+    for (const d of sorted) if (d <= local) best = d;
+    return best || sorted[0];
+  }
+
+  /** "Today", "Yesterday" or a short date, for a puzzle day relative to the player's current day. */
+  function dayLabel(day, current) {
+    const diff = dayNumber(current) - dayNumber(day);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    return formatDateShort(day);
+  }
+
+  /**
+   * The URL hash names a puzzle: "#2026-11-08/nasa" (that day), "#2026-11-08" (that day's list),
+   * "#nasa" (today's) or nothing (today's list). `day` is "" when it means the player's today.
+   */
+  function parseRoute(hash) {
+    const h = String(hash || '').replace(/^#/, '');
+    const m = /^(\d{4}-\d{2}-\d{2})(?:\/([a-z]+))?$/.exec(h);
+    if (m) return { day: m[1], key: m[2] || '' };
+    return { day: '', key: h };
+  }
+
   function formatTime(seconds) {
     const s = Math.max(0, Math.round(seconds));
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
@@ -414,6 +445,9 @@
     isSolved,
     layoutTray,
     dayNumber,
+    pickDay,
+    dayLabel,
+    parseRoute,
     formatTime,
     formatDateShort,
     updateStats,

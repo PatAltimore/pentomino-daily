@@ -1,16 +1,22 @@
 #!/usr/bin/env node
 /*
- * Fetch today's four puzzle pictures and captions and write them into site/:
- *   site/images/daily-<key>-<date>.<ext>   the pictures (same origin, so the canvas can slice them)
- *   site/data/<key>.json                   title, caption, credit, link and the image path
- * where <key> is one of
- *   nasa        NASA's Astronomy Picture of the Day; if NASA's API is down, a picture from the
- *               NASA Image and Video Library (a different host) chosen by the date
- *   wikipedia   Wikipedia's Picture of the day
- *   tetromino   a public-domain artwork from the Art Institute of Chicago, chosen by the date
+ * Fetch the puzzle pictures and captions for a window of days and write them into site/:
+ *   site/data/<day>/<key>.json             title, caption, credit, link and the image path
+ *   site/images/daily-<key>-<day>.<ext>    the picture (same origin, so the canvas can slice it)
+ *   site/data/manifest.json                which days and puzzles are available
+ * <day> is the puzzle's day. The browser shows each player the puzzles for their local date, and
+ * lets them play the other days in the window. <key> is one of
+ *   nasa        NASA's Astronomy Picture of the Day from the day before <day>; if that is not
+ *               available, a NASA Image and Video Library picture chosen by <day>
+ *   wikipedia   Wikipedia's Picture of the day from the day before <day>
+ *   tetromino   a public-domain Art Institute of Chicago artwork chosen by <day>
  *   fixed       another Art Institute artwork (the no-rotation puzzle)
- * If the Art Institute is unreachable, tetromino and fixed fall back to Wikipedia's Picture of
- * the day from one and two days earlier. The site's start page offers one puzzle for each.
+ * The two "picture of the day" puzzles use the previous day's picture so that it already exists in
+ * every time zone at local midnight. If the Art Institute is unreachable, tetromino and fixed fall
+ * back to older Wikipedia pictures.
+ *
+ * The window is the UTC date's neighbours: from tomorrow (UTC) back BACK_DAYS days, which covers
+ * every time zone's local "today" and leaves a week of earlier puzzles to play.
  *
  * Set IMAGE_SOURCE=apod (NASA only), wikimedia (Wikipedia only) or artic (Art Institute only)
  * to fetch just one source.
@@ -18,12 +24,12 @@
  * Environment:
  *   NASA_API_KEY        free key from https://api.nasa.gov (falls back to the rate-limited DEMO_KEY)
  *   IMAGE_SOURCE        auto (default, all) | apod | wikimedia | artic
- *   FORCE_REFETCH       set to 1 to fetch every picture even if today's is already in site/
+ *   FORCE_REFETCH       set to 1 to fetch every picture even if it is already in site/
  *   ALLOW_COPYRIGHTED   "true" to use APOD pictures that carry a photographer's copyright.
  *                       Default is to skip them, because this script republishes the image file.
  *
- * Exits non-zero only if nothing could be fetched or kept from a previous run, so a scheduled
- * deploy keeps the previous puzzles live. A puzzle with no picture shows as unavailable.
+ * Pictures already fetched (restored from the previous run's cache) are kept, and a source that
+ * errors is not retried for the rest of the run. Exits non-zero only if nothing is available.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
@@ -198,7 +204,9 @@ async function fetchJson(url, timeoutMs = 20000) {
     // Include the start of the response so the CI log says why (bad key, rate limit, outage...).
     const body = await res.text().catch(() => '');
     const detail = body.replace(/\s+/g, ' ').trim().slice(0, 200);
-    throw new Error(`HTTP ${res.status} from ${new URL(url).host}` + (detail ? `: ${detail}` : ''));
+    const err = new Error(`HTTP ${res.status} from ${new URL(url).host}` + (detail ? `: ${detail}` : ''));
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
@@ -223,30 +231,6 @@ async function download(urls) {
   throw lastError;
 }
 
-async function writeOutputs(key, pick, { buf, ext }) {
-  const imagesDir = path.join(SITE, 'images');
-  const dataDir = path.join(SITE, 'data');
-  await mkdir(imagesDir, { recursive: true });
-  await mkdir(dataDir, { recursive: true });
-  const fileName = `daily-${key}-${pick.date}.${ext}`;
-  for (const name of await readdir(imagesDir)) {
-    if (name.startsWith(`daily-${key}-`) && name !== fileName) await rm(path.join(imagesDir, name));
-  }
-  await writeFile(path.join(imagesDir, fileName), buf);
-  const today = {
-    key,
-    date: pick.date,
-    title: pick.title,
-    description: pick.description,
-    credit: pick.credit,
-    source: pick.source,
-    pageUrl: pick.pageUrl,
-    image: `images/${fileName}`,
-  };
-  await writeFile(path.join(dataDir, `${key}.json`), JSON.stringify(today, null, 2) + '\n');
-  return today;
-}
-
 function shiftDate(dateStr, days) {
   return new Date(Date.parse(dateStr + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10);
 }
@@ -261,8 +245,100 @@ async function fetchJsonRetry(url) {
   }
 }
 
-async function fetchWikipedia(daysBack) {
-  const date = shiftDate(new Date().toISOString().slice(0, 10), -daysBack);
+const KEYS = ['nasa', 'wikipedia', 'tetromino', 'fixed'];
+const BACK_DAYS = 5;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const todayUtc = () => new Date().toISOString().slice(0, 10);
+
+/** The days to publish, newest first: tomorrow (UTC) back BACK_DAYS days before today. */
+export function windowDays(today) {
+  const out = [];
+  for (let i = 1; i >= -BACK_DAYS; i--) out.push(shiftDate(today, i));
+  return out;
+}
+
+/** Order to fetch in, so the days players are most likely to open come first. */
+export function fetchOrder(today) {
+  const days = windowDays(today);
+  const first = [today, shiftDate(today, 1), shiftDate(today, -1)];
+  return [...first, ...days.filter((d) => !first.includes(d))];
+}
+
+const entryPath = (day, key) => path.join(SITE, 'data', day, `${key}.json`);
+
+/** The saved entry for a day and puzzle, or null when missing or its picture is gone. */
+function readEntry(day, key) {
+  try {
+    const info = JSON.parse(readFileSync(entryPath(day, key), 'utf8'));
+    return existsSync(path.join(SITE, info.image)) ? info : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeEntry(day, key, pick, { buf, ext }, extra) {
+  const imagesDir = path.join(SITE, 'images');
+  await mkdir(imagesDir, { recursive: true });
+  await mkdir(path.join(SITE, 'data', day), { recursive: true });
+  const base = `daily-${key}-${day}`;
+  for (const name of await readdir(imagesDir)) {
+    if (name.startsWith(base + '.')) await rm(path.join(imagesDir, name));
+  }
+  const fileName = `${base}.${ext}`;
+  await writeFile(path.join(imagesDir, fileName), buf);
+  const entry = {
+    key,
+    day,
+    date: pick.date,
+    title: pick.title,
+    description: pick.description,
+    credit: pick.credit,
+    source: pick.source,
+    pageUrl: pick.pageUrl,
+    image: `images/${fileName}`,
+    ...extra,
+  };
+  await writeFile(entryPath(day, key), JSON.stringify(entry, null, 2) + '\n');
+  return entry;
+}
+
+/** Drop days outside the window, pictures no entry uses, and the old single-day layout. */
+async function prune(days) {
+  const dataDir = path.join(SITE, 'data');
+  const keep = new Set(days);
+  for (const name of existsSync(dataDir) ? await readdir(dataDir) : []) {
+    const old = KEYS.map((k) => `${k}.json`).includes(name) || name === 'today.json';
+    if (old || (DAY_RE.test(name) && !keep.has(name))) await rm(path.join(dataDir, name), { recursive: true, force: true });
+  }
+  const used = new Set();
+  for (const day of days) for (const key of KEYS) {
+    const e = readEntry(day, key);
+    if (e) used.add(path.basename(e.image));
+  }
+  const imagesDir = path.join(SITE, 'images');
+  for (const name of existsSync(imagesDir) ? await readdir(imagesDir) : []) {
+    if (name.startsWith('daily-') && !used.has(name)) await rm(path.join(imagesDir, name));
+  }
+}
+
+/** Write data/manifest.json from the entries on disk. Returns the number of entries listed. */
+async function writeManifest(days, today) {
+  const entries = {};
+  let count = 0;
+  for (const day of days) {
+    const keys = KEYS.filter((k) => readEntry(day, k));
+    if (keys.length) {
+      entries[day] = keys;
+      count += keys.length;
+    }
+  }
+  const manifest = { today, days: Object.keys(entries).sort().reverse(), entries };
+  await mkdir(path.join(SITE, 'data'), { recursive: true });
+  await writeFile(path.join(SITE, 'data', 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+  return count;
+}
+
+async function fetchWikipedia(date) {
   const [y, m, d] = date.split('-');
   const urls = [
     `https://en.wikipedia.org/api/rest_v1/feed/featured/${y}/${m}/${d}`,
@@ -279,33 +355,21 @@ async function fetchWikipedia(daysBack) {
   throw lastError;
 }
 
-const todayUtc = () => new Date().toISOString().slice(0, 10);
+const articPages = new Map();
 
-/**
- * True when a picture for `key` dated today is already in site/ (restored from the previous run's
- * cache). The deploy runs hourly, so skipping these keeps today's puzzle from changing under a
- * player (say, from a fallback picture to the preferred source) and saves needless requests.
- */
-function haveTodaysPicture(key) {
-  try {
-    const info = JSON.parse(readFileSync(path.join(SITE, 'data', `${key}.json`), 'utf8'));
-    return info.date === todayUtc() && existsSync(path.join(SITE, info.image));
-  } catch {
-    return false;
-  }
-}
-
-/** A public-domain artwork from the Art Institute of Chicago, chosen by date (and puzzle key). */
-async function fetchArtic(key, skipIds) {
-  const date = todayUtc();
-  // The list is the first 1000 public-domain results in 100-item pages; the date picks the page,
+/** A public-domain artwork from the Art Institute of Chicago, chosen by day (and puzzle key). */
+async function fetchArtic(day, key, skipIds) {
+  // The list is the first 1000 public-domain results in 100-item pages; the day picks the page,
   // then the work within it, so everyone gets the same artwork and it changes daily.
-  const page = (hashSeed('page:' + date) % 10) + 1;
-  const fields = 'id,title,artist_display,image_id,is_public_domain,thumbnail,short_description,description';
-  const url =
-    'https://api.artic.edu/api/v1/artworks/search?query[term][is_public_domain]=true' +
-    `&fields=${fields}&limit=100&page=${page}`;
-  return pickArtic(await fetchJsonRetry(url), { date, seed: date + ':' + key, skipIds });
+  const page = (hashSeed('page:' + day) % 10) + 1;
+  if (!articPages.has(page)) {
+    const fields = 'id,title,artist_display,image_id,is_public_domain,thumbnail,short_description,description';
+    const url =
+      'https://api.artic.edu/api/v1/artworks/search?query[term][is_public_domain]=true' +
+      `&fields=${fields}&limit=100&page=${page}`;
+    articPages.set(page, await fetchJsonRetry(url));
+  }
+  return pickArtic(articPages.get(page), { date: day, seed: day + ':' + key, skipIds });
 }
 
 const NASA_LIBRARY_TOPICS = [
@@ -313,15 +377,14 @@ const NASA_LIBRARY_TOPICS = [
   'aurora', 'sun', 'saturn', 'jupiter', 'webb telescope', 'star cluster', 'comet',
 ];
 
-/** NASA Image and Video Library (images-api.nasa.gov), used when the APOD API is down. */
-async function fetchNasaLibrary() {
-  const date = todayUtc();
-  const topic = NASA_LIBRARY_TOPICS[hashSeed('topic:' + date) % NASA_LIBRARY_TOPICS.length];
+/** NASA Image and Video Library (images-api.nasa.gov), used when the APOD picture is unavailable. */
+async function fetchNasaLibrary(day) {
+  const topic = NASA_LIBRARY_TOPICS[hashSeed('topic:' + day) % NASA_LIBRARY_TOPICS.length];
   const search = await fetchJson(
     `https://images-api.nasa.gov/search?q=${encodeURIComponent(topic)}&media_type=image&page_size=100`,
     45000,
   );
-  const item = pickNasaLibraryItem(search, date + ':' + topic);
+  const item = pickNasaLibraryItem(search, day + ':' + topic);
   if (!item) return null;
   let assets = null;
   try {
@@ -329,90 +392,86 @@ async function fetchNasaLibrary() {
   } catch (err) {
     console.warn('  Could not list sizes, using the preview image: ' + (err && err.message ? err.message : err));
   }
-  return buildNasaLibraryPick(item, assets, date);
+  return buildNasaLibraryPick(item, assets, day);
 }
 
-async function fetchApod(apiKey, allowCopyrighted) {
-  // One request per day: NASA's date-range query is slow and times out. Start with
-  // today, then step back a few days if that day has no usable picture.
-  const base = `https://api.nasa.gov/planetary/apod?api_key=${apiKey}`;
-  let json = await fetchJsonRetry(base);
-  const pick = pickApod(json, { allowCopyrighted });
-  if (pick) return pick;
-  for (let back = 1; back <= 6; back++) {
-    const date = shiftDate(json.date, -1);
-    json = await fetchJsonRetry(`${base}&date=${date}`);
-    const older = pickApod(json, { allowCopyrighted });
-    if (older) return older;
+/** APOD for one date. A 4xx (e.g. a date NASA has not published yet) means "no picture", not an outage. */
+async function fetchApodOn(date, apiKey, allowCopyrighted) {
+  try {
+    const json = await fetchJsonRetry(`https://api.nasa.gov/planetary/apod?api_key=${apiKey}&date=${date}`);
+    return pickApod(json, { allowCopyrighted });
+  } catch (err) {
+    if (err && err.status >= 400 && err.status < 500) return null;
+    throw err;
   }
-  return null;
 }
 
 async function main() {
   const source = (process.env.IMAGE_SOURCE || 'auto').toLowerCase();
   const allowCopyrighted = process.env.ALLOW_COPYRIGHTED === 'true';
   const apiKey = process.env.NASA_API_KEY || 'DEMO_KEY';
+  const force = Boolean(process.env.FORCE_REFETCH);
   const want = (name) => source === 'auto' || source === name;
+  const today = todayUtc();
+  const days = windowDays(today);
 
-  // For each puzzle, sources to try in order; the first one that gives a downloadable picture wins.
-  let articPick = null;
-  const chains = {};
-  if (want('apod')) {
-    chains.nasa = [
-      ['NASA APOD', () => fetchApod(apiKey, allowCopyrighted)],
-      ['NASA Image and Video Library', fetchNasaLibrary],
-    ];
-  }
-  if (want('wikimedia')) chains.wikipedia = [['Wikipedia Picture of the day', () => fetchWikipedia(0)]];
-  for (const [key, daysBack] of [['tetromino', 1], ['fixed', 2]]) {
+  // Sources that errored (outage, timeout) this run are skipped from then on, so one dead API
+  // costs one timeout, not one per day.
+  const down = new Set();
+
+  // For a day and puzzle: sources to try in order. `fallback` marks a stand-in picture; those are
+  // replaced as soon as the preferred source works again.
+  const chainFor = (day, key, skipIds) => {
+    const before = (n) => shiftDate(day, -n);
     const chain = [];
-    if (want('artic')) {
-      chain.push([
-        'Art Institute of Chicago',
-        async () => {
-          const pick = await fetchArtic(key, articPick ? [articPick.id] : []);
-          if (pick) articPick = pick;
-          return pick;
-        },
-      ]);
-    }
-    if (want('wikimedia')) chain.push([`Wikipedia Picture of the day (${daysBack} day back)`, () => fetchWikipedia(daysBack)]);
-    if (chain.length) chains[key] = chain;
-  }
-
-  let saved = 0;
-  let kept = 0;
-  for (const [key, chain] of Object.entries(chains)) {
-    if (!process.env.FORCE_REFETCH && haveTodaysPicture(key)) {
-      console.log(`[${key}] Already have today's picture; keeping it.`);
-      kept++;
-      continue;
-    }
-    let done = false;
-    for (const [name, attempt] of chain) {
-      try {
-        console.log(`[${key}] Trying ${name}...`);
-        const pick = await attempt();
-        if (!pick) {
-          console.log('  Skipped: no usable picture (video, copyrighted or missing).');
-          continue;
-        }
-        const today = await writeOutputs(key, pick, await download(pick.imageUrls));
-        console.log(`  Saved "${today.title}" (${today.date}) from ${today.source} -> site/${today.image}`);
-        saved++;
-        done = true;
-        break;
-      } catch (err) {
-        console.warn(`  ${name} failed: ${err && err.message ? err.message : err}`);
+    if (key === 'nasa') {
+      if (want('apod')) chain.push({ name: 'NASA APOD', run: () => fetchApodOn(before(1), apiKey, allowCopyrighted) });
+      if (want('apod')) chain.push({ name: 'NASA Image and Video Library', fallback: true, run: () => fetchNasaLibrary(day) });
+    } else if (key === 'wikipedia') {
+      if (want('wikimedia')) chain.push({ name: 'Wikipedia Picture of the day', run: () => fetchWikipedia(before(1)) });
+    } else {
+      if (want('artic')) chain.push({ name: 'Art Institute of Chicago', run: () => fetchArtic(day, key, skipIds) });
+      if (want('wikimedia')) {
+        const n = key === 'tetromino' ? 2 : 3; // distinct from the "wikipedia" puzzle's day-1 picture
+        chain.push({ name: `Wikipedia Picture of the day (${n} days back)`, fallback: true, run: () => fetchWikipedia(before(n)) });
       }
     }
-    // The deploy workflow restores the previous run's files, so an outage keeps the old puzzle.
-    if (!done && existsSync(path.join(SITE, 'data', `${key}.json`))) {
-      console.log(`  Keeping the previously fetched ${key} picture.`);
-      kept++;
+    return chain;
+  };
+
+  let saved = 0;
+  for (const day of fetchOrder(today)) {
+    for (const key of KEYS) {
+      const existing = readEntry(day, key);
+      if (existing && !existing.fallback && !force) continue; // already have the preferred picture
+      let chain = chainFor(day, key, key === 'fixed' ? [readEntry(day, 'tetromino')?.artworkId].filter(Boolean) : []);
+      if (existing && existing.fallback && !force) chain = chain.filter((c) => !c.fallback); // only try to upgrade
+      for (const c of chain) {
+        if (down.has(c.name.replace(/ \(.*\)$/, ''))) continue;
+        try {
+          console.log(`[${day} ${key}] Trying ${c.name}...`);
+          const pick = await c.run();
+          if (!pick) {
+            console.log('  Skipped: no usable picture (video, copyrighted or missing).');
+            continue;
+          }
+          const extra = { ...(c.fallback ? { fallback: true } : {}), ...(pick.id ? { artworkId: pick.id } : {}) };
+          const entry = await writeEntry(day, key, pick, await download(pick.imageUrls), extra);
+          console.log(`  Saved "${entry.title}" (${entry.date}) from ${entry.source}`);
+          saved++;
+          break;
+        } catch (err) {
+          console.warn(`  ${c.name} failed: ${err && err.message ? err.message : err}`);
+          if (!err || !err.status || err.status >= 500) down.add(c.name.replace(/ \(.*\)$/, ''));
+        }
+      }
     }
   }
-  if (!saved && !kept) throw new Error('No picture source worked.');
+
+  await prune(days);
+  const total = await writeManifest(days, today);
+  console.log(`${saved} fetched, ${total} puzzles available across ${days.length} days.`);
+  if (!total) throw new Error('No picture source worked.');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

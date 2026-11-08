@@ -32,19 +32,22 @@
     remove: function (k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
   };
 
-  // Which puzzle to play comes from the URL hash (#nasa, #wikipedia, #sample).
-  // No hash means the start page, where the player picks one.
+  // Which puzzle to play comes from the URL hash: #<day>/<puzzle> (for example #2026-11-08/nasa),
+  // #<puzzle> for today's, #sample for the placeholder. #<day> or nothing shows the start page.
   // Each puzzle: which piece set it is cut from, board size ([portrait cols, rows]; landscape
   // pictures swap them) and whether pieces may be rotated and flipped.
   var PUZZLES = {
-    tetromino: { name: 'Tetromino puzzle', icon: '🧱', level: 'Easy', blurb: 'Artwork, 6 pieces of 4 cells', file: 'data/tetromino.json', set: 'tetromino', grid: [4, 6], fixed: false },
-    nasa: { name: 'NASA picture', icon: '🚀', level: 'Medium', blurb: 'A picture from NASA', file: 'data/nasa.json', set: 'pentomino', grid: [5, 6], fixed: false },
-    wikipedia: { name: 'Wikipedia picture', icon: '📖', level: 'Medium', blurb: 'Wikipedia\'s picture of the day', file: 'data/wikipedia.json', set: 'pentomino', grid: [5, 6], fixed: false },
-    fixed: { name: 'Fixed pieces', icon: '📌', level: 'Challenge', blurb: 'Artwork, 8 pieces, no turning', file: 'data/fixed.json', set: 'pentomino', grid: [5, 8], fixed: true },
+    tetromino: { name: 'Tetromino puzzle', icon: '🧱', level: 'Easy', blurb: 'Artwork, 6 pieces of 4 cells', set: 'tetromino', grid: [4, 6], fixed: false },
+    nasa: { name: 'NASA picture', icon: '🚀', level: 'Medium', blurb: 'A picture from NASA', set: 'pentomino', grid: [5, 6], fixed: false },
+    wikipedia: { name: 'Wikipedia picture', icon: '📖', level: 'Medium', blurb: 'Wikipedia\'s picture of the day', set: 'pentomino', grid: [5, 6], fixed: false },
+    fixed: { name: 'Fixed pieces', icon: '📌', level: 'Challenge', blurb: 'Artwork, 8 pieces, no turning', set: 'pentomino', grid: [5, 8], fixed: true },
   };
   var SAMPLE = { name: 'Sample picture', icon: '🌙', level: '', blurb: 'Placeholder until real pictures are fetched', file: 'data/sample.json', set: 'pentomino', grid: [5, 6], fixed: false };
-  var puzzleCfg = PUZZLES[(location.hash || '').replace(/^#/, '')] || SAMPLE;
-  var puzzleKey = (location.hash || '').replace(/^#/, '');
+  var route = C.parseRoute(location.hash);
+  var puzzleKey = route.key;
+  var puzzleCfg = PUZZLES[puzzleKey] || SAMPLE;
+  var currentDay = ''; // the player's "today" among the published days
+  var browsableDays = []; // published days from today backwards
 
   // ----------------------------------------------------------------- game state
   var data = null;
@@ -544,7 +547,9 @@
     var result = { seconds: seconds, moves: moves, hints: hints };
     if (!params.has('seed') && !practice) {
       store.set(doneKey(puzzleKey, puzzleDate), result);
-      store.set('pd:stats', C.updateStats(store.get('pd:stats'), puzzleDate, seconds));
+      if (puzzleDate === currentDay) { // earlier days don't count toward the streak or best time
+        store.set('pd:stats', C.updateStats(store.get('pd:stats'), puzzleDate, seconds));
+      }
     }
     lastResult = result;
     updateHud();
@@ -670,27 +675,51 @@
     });
   }
 
-  function doneKey(key, date) { return 'pd:done:' + key + ':' + date; }
+  function doneKey(key, day) { return 'pd:done:' + key + ':' + day; }
+  function dataFile(day, key) { return 'data/' + day + '/' + key + '.json'; }
+
+  /** The list of published days, or null when there isn't one (local development). */
+  function loadManifest() {
+    return fetchJson('data/manifest.json').then(function (m) {
+      return m && Array.isArray(m.days) && m.days.length ? m : null;
+    }, function () { return null; });
+  }
+
+  // Work out the player's "today" from the published days, and which earlier days they can open.
+  // Days after their local date are not offered yet.
+  function resolveDays(m) {
+    currentDay = C.pickDay(m.days, localDate());
+    browsableDays = m.days.filter(function (d) { return d <= currentDay; }).sort().reverse();
+  }
+
+  function backToStart() {
+    location.hash = puzzleDate && puzzleDate !== currentDay ? puzzleDate : '';
+  }
 
   // ------------------------------------------------------------------ start page
   function showStart() {
     $('start').hidden = false;
-    $('start-date').textContent = C.formatDateShort(localDate());
-    var keys = Object.keys(PUZZLES);
-    Promise.all(keys.map(function (k) {
-      return fetchJson(PUZZLES[k].file).then(function (d) { return d; }, function () { return null; });
-    })).then(function (list) {
-      var items = keys.map(function (k, i) { return { key: k, meta: PUZZLES[k], data: list[i] }; });
-      if (!list.some(Boolean)) { // nothing fetched yet (local development): offer the sample
+    loadManifest().then(function (m) {
+      if (!m) { // nothing fetched yet (local development): offer the sample
         return fetchJson(SAMPLE.file).then(function (d) {
-          return [{ key: 'sample', meta: SAMPLE, data: d }];
-        }, function () { return items; });
+          currentDay = localDate();
+          renderStart([{ key: 'sample', meta: SAMPLE, data: d }], '');
+        }, function () { renderStart([], ''); });
       }
-      return items;
-    }).then(renderStart);
+      resolveDays(m);
+      var day = browsableDays.indexOf(route.day) >= 0 ? route.day : currentDay;
+      var have = m.entries[day] || [];
+      var keys = Object.keys(PUZZLES);
+      return Promise.all(keys.map(function (k) {
+        if (have.indexOf(k) < 0) return null;
+        return fetchJson(dataFile(day, k)).then(function (d) { return d; }, function () { return null; });
+      })).then(function (list) {
+        renderStart(keys.map(function (k, i) { return { key: k, meta: PUZZLES[k], data: list[i] }; }), day);
+      });
+    });
   }
 
-  function renderStart(items) {
+  function renderStart(items, day) {
     var box = $('puzzle-list');
     box.textContent = '';
     var solved = 0;
@@ -716,11 +745,10 @@
       btn.append(icon, info, badge);
       if (!it.data) {
         btn.disabled = true;
-        badge.textContent = 'Not available today';
+        badge.textContent = 'Not available';
       } else {
         playable++;
-        var date = it.data.date || localDate();
-        var done = store.get(doneKey(it.key, date));
+        var done = store.get(doneKey(it.key, day || it.data.date || localDate()));
         if (done) {
           solved++;
           btn.className += ' done';
@@ -728,20 +756,43 @@
         } else {
           badge.textContent = 'Play';
         }
-        btn.addEventListener('click', function () { location.hash = it.key; });
+        btn.addEventListener('click', function () { location.hash = day ? day + '/' + it.key : it.key; });
       }
       box.append(btn);
     });
+
+    // Day navigation: earlier days are ordered newest first.
+    var idx = browsableDays.indexOf(day);
+    var go = function (target) { return function () { location.hash = target === currentDay ? '' : target; }; };
+    $('day-prev').disabled = idx < 0 || idx >= browsableDays.length - 1;
+    $('day-next').disabled = idx <= 0;
+    $('day-label').textContent = day ? C.dayLabel(day, currentDay) + (day === currentDay ? ' · ' + C.formatDateShort(day) : '') : C.formatDateShort(localDate());
+    if (!$('day-prev').disabled) $('day-prev').addEventListener('click', go(browsableDays[idx + 1]));
+    if (!$('day-next').disabled) $('day-next').addEventListener('click', go(browsableDays[idx - 1]));
+
+    var isToday = !day || day === currentDay; // the sample has no day
     $('start-progress').textContent = playable
-      ? solved + ' of ' + playable + ' solved today' + (solved === playable ? ' — come back tomorrow!' : '')
+      ? solved + ' of ' + playable + ' solved' + (isToday ? ' today' : '') + (solved === playable && isToday ? ' — come back tomorrow, or try an earlier day!' : '')
       : 'No pictures could be loaded. Try again later.';
   }
 
-  function backToStart() { location.hash = ''; }
-
+  // Load the chosen puzzle: its day's entry, or the sample puzzle.
   function loadData() {
-    if (!PUZZLES[puzzleKey] && puzzleKey !== 'sample') return Promise.reject(new Error('Unknown puzzle'));
-    return fetchJson((PUZZLES[puzzleKey] || SAMPLE).file);
+    if (puzzleKey === 'sample') {
+      return fetchJson(SAMPLE.file).then(function (d) {
+        currentDay = localDate();
+        puzzleDate = d.date || currentDay;
+        return d;
+      });
+    }
+    if (!PUZZLES[puzzleKey]) return Promise.reject(new Error('Unknown puzzle'));
+    return loadManifest().then(function (m) {
+      if (!m) throw new Error('No puzzles have been published yet.');
+      resolveDays(m);
+      puzzleDate = browsableDays.indexOf(route.day) >= 0 ? route.day : currentDay;
+      if ((m.entries[puzzleDate] || []).indexOf(puzzleKey) < 0) throw new Error('This puzzle is not available.');
+      return fetchJson(dataFile(puzzleDate, puzzleKey));
+    });
   }
 
   function loadImage(src) {
@@ -773,14 +824,14 @@
     loadData()
       .then(function (d) {
         data = d;
-        puzzleDate = d.date || localDate();
         return loadImage(d.image);
       })
       .then(function (im) {
         img = im;
         newPuzzle();
         statusEl.hidden = true;
-        $('puzzle-date').textContent = (data.sample ? 'Sample puzzle · ' : (puzzleCfg.name + ' · ')) + C.formatDateShort(puzzleDate);
+        $('puzzle-date').textContent = (data.sample ? 'Sample puzzle · ' : (puzzleCfg.name + ' · ')) + C.formatDateShort(puzzleDate) +
+          (puzzleDate !== currentDay ? ' · earlier day' : '');
 
         if (params.has('reset')) store.remove(doneKey(puzzleKey, puzzleDate));
         var done = params.has('seed') ? null : store.get(doneKey(puzzleKey, puzzleDate));
@@ -794,7 +845,7 @@
       })
       .catch(function (err) {
         statusEl.hidden = false;
-        statusEl.textContent = 'Could not load today’s puzzle. ' + (err && err.message ? err.message : '');
+        statusEl.textContent = 'Could not load this puzzle. ' + (err && err.message ? err.message : '');
       });
   }
 

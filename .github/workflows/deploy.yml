@@ -36,31 +36,38 @@ jobs:
       - name: Run tests
         run: npm test
 
-      # Remember the last pictures that were fetched. If NASA's API is down on a later run, the
-      # restored picture is deployed instead of leaving that puzzle unavailable. The fetch step
-      # below overwrites these files whenever it succeeds. (Caches are write-once per key, so
-      # each run saves under its own key and restores the newest one.)
+      # Remember the pictures fetched so far. They are restored here, so a run only downloads what
+      # is new (and a source that is down keeps its earlier pictures), and saved again below.
       - name: Restore last fetched pictures
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
-            site/data/nasa.json
-            site/data/wikipedia.json
-            site/data/tetromino.json
-            site/data/fixed.json
+            site/data/manifest.json
+            site/data/20*
             site/images/daily-*
-          key: daily-${{ github.run_id }}
+          key: daily-none
           restore-keys: daily-
 
-      # Writes site/data/{nasa,wikipedia,tetromino,fixed}.json and site/images/daily-<key>-<date>.<ext> for this build only.
-      # Nothing is committed, so the repo doesn't grow by a picture every day.
-      # If both sources fail the job fails and the previous deployment stays live.
-      - name: Fetch today's pictures
+      # Writes site/data/<day>/<key>.json, site/data/manifest.json and
+      # site/images/daily-<key>-<day>.<ext> for a week of puzzle days. Nothing is committed, so the
+      # repo doesn't grow by pictures. If nothing at all is available the job fails and the previous
+      # deployment stays live.
+      - name: Fetch pictures
         env:
           NASA_API_KEY: ${{ secrets.NASA_API_KEY }}
-          # IMAGE_SOURCE: auto        # auto | apod | wikimedia
+          # IMAGE_SOURCE: auto        # auto | apod | wikimedia | artic
           # ALLOW_COPYRIGHTED: 'true' # see README before turning this on
         run: node scripts/fetch-daily.mjs
+
+      # The key is a hash of what was fetched, so an hourly run that changed nothing saves nothing.
+      - name: Save fetched pictures
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            site/data/manifest.json
+            site/data/20*
+            site/images/daily-*
+          key: daily-${{ hashFiles('site/data/manifest.json', 'site/data/20*/*.json') }}
 
       - uses: actions/configure-pages@v5
 

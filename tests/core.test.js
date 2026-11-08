@@ -175,6 +175,26 @@ test('share text names the puzzle when a source is given', () => {
   assert.match(C.shareText({ date: '2026-11-07', source: 'NASA picture', seconds: 5, moves: 1, hints: 0 }), /Daily · NASA picture · Nov 7/);
 });
 
+test('pickDay chooses the newest published day that is not in the player\'s future', () => {
+  const days = ['2026-11-09', '2026-11-07', '2026-11-08', '2026-11-06'];
+  assert.equal(C.pickDay(days, '2026-11-08'), '2026-11-08');
+  assert.equal(C.pickDay(days, '2026-11-09'), '2026-11-09');
+  assert.equal(C.pickDay(days, '2026-11-12'), '2026-11-09', 'newest when the local date is past them all');
+  assert.equal(C.pickDay(days, '2026-11-01'), '2026-11-06', 'oldest when every day is in the future');
+  assert.equal(C.pickDay([], '2026-11-08'), null);
+});
+
+test('dayLabel and parseRoute', () => {
+  assert.equal(C.dayLabel('2026-11-08', '2026-11-08'), 'Today');
+  assert.equal(C.dayLabel('2026-11-07', '2026-11-08'), 'Yesterday');
+  assert.equal(C.dayLabel('2026-11-05', '2026-11-08'), 'Nov 5');
+  assert.deepEqual(C.parseRoute(''), { day: '', key: '' });
+  assert.deepEqual(C.parseRoute('#'), { day: '', key: '' });
+  assert.deepEqual(C.parseRoute('#nasa'), { day: '', key: 'nasa' });
+  assert.deepEqual(C.parseRoute('#2026-11-07'), { day: '2026-11-07', key: '' });
+  assert.deepEqual(C.parseRoute('#2026-11-07/fixed'), { day: '2026-11-07', key: 'fixed' });
+});
+
 test('share text marks a retry', () => {
   const t = C.shareText({ date: '2026-11-07', source: 'NASA picture', seconds: 65, moves: 3, hints: 0, retry: true });
   assert.match(t.split('\n')[0], /Nov 7 · 🔁 retry$/);
