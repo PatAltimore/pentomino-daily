@@ -176,9 +176,9 @@ async function solveByDragging(env, count) {
     const [sx, sy] = toPx(st.slot);
 
     tap(canvas, sx, sy); // select it
-    assert.equal(env.sandbox.document.getElementById('btn-rotate').disabled, false, 'toolbar enables on select');
+    assert.equal(env.sandbox.document.getElementById('btn-rotate-cw').disabled, false, 'toolbar enables on select');
     for (let guard = 0; guard < 6 && !(st.r === 0 && !st.f); guard++) {
-      env.el(st.f ? 'btn-flip' : 'btn-rotate').fire('click');
+      env.el(st.f ? 'btn-flip' : 'btn-rotate-cw').fire('click');
     }
     assert.ok(st.r === 0 && !st.f, 'piece ' + p.letter + ' reached its home orientation');
 
@@ -547,7 +547,8 @@ test('the fixed-pieces puzzle starts upright and cannot rotate or flip', async (
     assert.equal(layout.cols * layout.rows, 40);
     assert.equal(pieces.length, 8);
     assert.ok(states.every((st) => st.r === 0 && !st.f), 'every piece starts in its home orientation');
-    assert.equal(env.el('btn-rotate').hidden, true);
+    assert.equal(env.el('btn-rotate-cw').hidden, true);
+    assert.equal(env.el('btn-rotate-ccw').hidden, true);
     assert.equal(env.el('btn-flip').hidden, true);
 
     // Selecting a piece and trying to turn it (button, tap, key) changes nothing.
@@ -558,7 +559,8 @@ test('the fixed-pieces puzzle starts upright and cannot rotate or flip', async (
     const y = by + st.slot[1] * s;
     tap(canvas, x, y);
     tap(canvas, x, y);
-    env.el('btn-rotate').fire('click');
+    env.el('btn-rotate-cw').fire('click');
+    env.el('btn-rotate-ccw').fire('click');
     env.el('btn-flip').fire('click');
     (env.docHandlers.keydown || []).forEach((fn) => fn({ key: 'r' }));
     assert.ok(st.r === 0 && !st.f);
@@ -662,6 +664,75 @@ test('on a full board the hint is drawn on top of the pieces and the hinted piec
     const frame = env.calls.slice(env.calls.lastIndexOf('clearRect'));
     assert.ok(frame.includes('setLineDash'), 'the hint outline is drawn');
     assert.ok(frame.indexOf('setLineDash') > frame.lastIndexOf('drawImage'), 'after every piece, so it is not hidden under them');
+  } finally {
+    env.teardown();
+  }
+});
+
+
+test('clockwise and counter-clockwise buttons turn the selected piece opposite ways on screen', async () => {
+  const env = makeEnv();
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    const { states, layout } = env.pento();
+    const st = states[0];
+    assert.equal(env.el('btn-rotate-cw').disabled, true, 'both are off until a piece is selected');
+    assert.equal(env.el('btn-rotate-ccw').disabled, true);
+    tap(env.el('board'), layout.bx + st.slot[0] * layout.s, layout.by + st.slot[1] * layout.s);
+    assert.equal(env.el('btn-rotate-cw').disabled, false);
+    assert.equal(env.el('btn-rotate-ccw').disabled, false);
+
+    // Rotating a screen point a quarter turn: clockwise (x,y) -> (-y,x), counter-clockwise (x,y) -> (y,-x).
+    const probe = [2, 1];
+    for (const f of [false, true]) {
+      for (let r = 0; r < 4; r++) {
+        for (const [btn, turn] of [['btn-rotate-cw', ([x, y]) => [-y, x]], ['btn-rotate-ccw', ([x, y]) => [y, -x]]]) {
+          st.r = r;
+          st.f = f;
+          const before = Core.applyT(probe, r, f);
+          env.el(btn).fire('click');
+          const after = Core.applyT(probe, st.r, st.f);
+          assert.deepEqual(after.map((v) => v + 0), turn(before).map((v) => v + 0), btn + ' from r=' + r + ' f=' + f);
+          assert.equal(st.f, f, 'turning never mirrors');
+        }
+      }
+    }
+
+    // Four turns either way, or one each way, come back to where they started.
+    st.r = 1;
+    st.f = false;
+    for (let i = 0; i < 4; i++) env.el('btn-rotate-ccw').fire('click');
+    assert.equal(st.r, 1);
+    env.el('btn-rotate-ccw').fire('click');
+    env.el('btn-rotate-cw').fire('click');
+    assert.equal(st.r, 1);
+  } finally {
+    env.teardown();
+  }
+});
+
+test('R turns clockwise, Shift+R counter-clockwise, and tapping a selected piece turns it clockwise', async () => {
+  const env = makeEnv();
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    const { states, layout } = env.pento();
+    const st = states[0];
+    const x = layout.bx + st.slot[0] * layout.s;
+    const y = layout.by + st.slot[1] * layout.s;
+    tap(env.el('board'), x, y); // select
+    const press = (ev) => (env.docHandlers.keydown || []).forEach((fn) => fn(ev));
+    st.r = 0;
+    st.f = false;
+    press({ key: 'r' });
+    assert.equal(st.r, 1, 'R is clockwise');
+    press({ key: 'R', shiftKey: true });
+    assert.equal(st.r, 0, 'Shift+R is counter-clockwise');
+    press({ key: 'R', shiftKey: true });
+    assert.equal(st.r, 3);
+    tap(env.el('board'), x, y); // tap the selected piece again
+    assert.equal(st.r, 0, 'a tap turns it clockwise');
   } finally {
     env.teardown();
   }

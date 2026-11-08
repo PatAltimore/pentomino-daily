@@ -50,7 +50,8 @@
     </main>
 
     <nav id="toolbar" aria-label="Piece controls">
-      <button id="btn-rotate" type="button">&#x27F3; Rotate</button>
+      <button id="btn-rotate-ccw" type="button" class="icon-btn" aria-label="Rotate counter-clockwise" title="Rotate counter-clockwise">&#x27F2;</button>
+      <button id="btn-rotate-cw" type="button" class="icon-btn" aria-label="Rotate clockwise" title="Rotate clockwise">&#x27F3;</button>
       <button id="btn-flip" type="button">&#x21C6; Flip</button>
       <button id="btn-hint" type="button">&#x1F4A1; Hint</button>
       <button id="btn-restart" type="button">&#x21BA; Restart</button>
@@ -80,7 +81,7 @@
         <li>A picture of the day has been cut into pentomino pieces. Rebuild it on the board.</li>
         <li><b>Drag</b> a piece onto the board. <b>Tap a piece</b> to select it, tap again to rotate.</li>
         <li id="help-fixed" hidden>In this puzzle the pieces <b>can't be rotated or flipped</b>. They already face the right way, so just drag each one to its place.</li>
-        <li>Use <b>Rotate</b> and <b>Flip</b> for the selected piece (keys: R and F on a keyboard).</li>
+        <li>Use the <b>&#x27F2; counter-clockwise</b> and <b>&#x27F3; clockwise</b> buttons to turn the selected piece, and <b>Flip</b> to mirror it (keys: R turns clockwise, Shift+R counter-clockwise, F flips).</li>
         <li>A piece snaps to the grid. It only counts when it sits in the right spot, facing the right way.</li>
         <li><b>Hint</b> shows where one piece belongs and adds 15 seconds to your time.</li>
         <li>There are four puzzles a day, from easy to challenging. Everyone gets the same ones.</li>

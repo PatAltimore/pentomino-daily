@@ -95,6 +95,7 @@ button.primary:hover { filter: brightness(1.08); }
 
 #toolbar { display: flex; gap: 8px; padding-top: 8px; }
 #toolbar button { flex: 1; padding: 12px 6px; }
+#toolbar .icon-btn { flex: 0 0 48px; font-size: 1.4rem; line-height: 1; padding: 8px 0; }
 
 dialog {
   width: min(92vw, 520px);

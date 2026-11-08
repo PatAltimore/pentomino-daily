@@ -359,8 +359,12 @@
     if (won || id < 0 || puzzleCfg.fixed) return;
     var st = states[id];
     var p = pieces[id];
-    var nr = kind === 'rot' ? (st.r + 1) & 3 : (4 - st.r) & 3; // flip mirrors left-right on screen
-    var nf = kind === 'rot' ? st.f : !st.f;
+    // cw / ccw turn the piece a quarter turn on screen; flip mirrors it left-right on screen.
+    var nr = st.r;
+    var nf = st.f;
+    if (kind === 'cw') nr = (st.r + 1) & 3;
+    else if (kind === 'ccw') nr = (st.r + 3) & 3;
+    else { nr = (4 - st.r) & 3; nf = !st.f; }
     startClock();
     if (st.placed) {
       var snap = C.findSnap(p, nr, nf, st.pivot, { cols: cols, rows: rows, occupied: occupiedMap(id), radius: 2 });
@@ -476,7 +480,7 @@
     drag = null;
     var pt = pos(e);
     if (!d.moved) {
-      if (!cancelled && d.wasSelected) transformPiece(d.id, 'rot'); // tap the selected piece again to rotate
+      if (!cancelled && d.wasSelected) transformPiece(d.id, 'cw'); // tap the selected piece again to rotate it clockwise
       return;
     }
     if (cancelled) {
@@ -494,7 +498,8 @@
   canvas.addEventListener('pointerup', function (e) { endDrag(e, false); });
   canvas.addEventListener('pointercancel', function (e) { endDrag(e, true); });
 
-  $('btn-rotate').addEventListener('click', function () { transformPiece(selected, 'rot'); });
+  $('btn-rotate-cw').addEventListener('click', function () { transformPiece(selected, 'cw'); });
+  $('btn-rotate-ccw').addEventListener('click', function () { transformPiece(selected, 'ccw'); });
   $('btn-flip').addEventListener('click', function () { transformPiece(selected, 'flip'); });
   $('btn-hint').addEventListener('click', useHint);
   $('btn-back').addEventListener('click', backToStart);
@@ -507,7 +512,7 @@
   document.addEventListener('keydown', function (e) {
     if (winDialog.open || helpDialog.open || e.ctrlKey || e.metaKey || e.altKey) return;
     var k = e.key.toLowerCase();
-    if (k === 'r') transformPiece(selected, 'rot');
+    if (k === 'r') transformPiece(selected, e.shiftKey ? 'ccw' : 'cw');
     else if (k === 'f') transformPiece(selected, 'flip');
     else if (k === 'h') useHint();
     else if (k === 'escape') select(-1);
@@ -551,7 +556,8 @@
     var h = $('hints');
     h.hidden = hints === 0;
     h.textContent = '💡' + hints;
-    $('btn-rotate').disabled = selected < 0 || won;
+    $('btn-rotate-cw').disabled = selected < 0 || won;
+    $('btn-rotate-ccw').disabled = selected < 0 || won;
     $('btn-flip').disabled = selected < 0 || won;
     $('btn-hint').disabled = won;
   }
@@ -881,7 +887,8 @@
     if (!PUZZLES[puzzleKey] && puzzleKey !== 'sample') { showStart(); return; }
     $('app').hidden = false;
     if (puzzleCfg.fixed) {
-      $('btn-rotate').hidden = true;
+      $('btn-rotate-cw').hidden = true;
+      $('btn-rotate-ccw').hidden = true;
       $('btn-flip').hidden = true;
       $('help-fixed').hidden = false;
     }
