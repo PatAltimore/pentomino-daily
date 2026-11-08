@@ -145,3 +145,20 @@ dialog p { margin: 0; }
 .daynav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 4px; }
 .daynav button { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 1.4rem; line-height: 1; }
 #day-label { min-width: 9.5em; text-align: center; font-weight: 700; }
+
+#notice {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  margin: 0;
+  padding: 10px 14px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  pointer-events: none;
+}
+#notice[hidden] { display: none; }

@@ -7,15 +7,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const Core = require('../site/core.js');
+const { placementFor, otherTiling } = require('./tiling-helpers.cjs');
 
 const SITE = path.join(__dirname, '..', 'site');
 const GAME_SRC = fs.readFileSync(path.join(SITE, 'game.js'), 'utf8');
 
-function makeEnv({ search = '?debug', hash = '#sample', storage = new Map(), imageSize = [1000, 1200], files = {} } = {}) {
+function makeEnv({ search = '?debug', hash = '#sample', storage = new Map(), imageSize = [1000, 1200], files = {}, flatImage = false } = {}) {
   const hashLog = [];
   const intervals = new Set();
   const els = {};
-  const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => ((t[k] = v), true) });
+  // flatImage: getImageData reports one flat colour, like a picture of plain black sky.
+  const flatPixels = (x, y, w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4).fill(120) });
+  const ctx2d = new Proxy({}, {
+    get: (t, k) => (k === 'getImageData' && flatImage ? flatPixels : k in t ? t[k] : () => {}),
+    set: (t, k, v) => ((t[k] = v), true),
+  });
 
   function makeEl(id) {
     const handlers = {};
@@ -571,3 +577,59 @@ test('the fixed-pieces puzzle starts upright and cannot rotate or flip', async (
   }
 });
 
+
+
+// Re-tiles the game's own pieces a different way (see tiling-helpers) and drags them there.
+async function placeAlternateTiling(env, cols, rows) {
+  const canvas = env.el('board');
+  const { pieces, states, layout } = env.pento();
+  const alt = otherTiling(pieces, cols, rows);
+  assert.ok(alt, 'this seed has a second tiling');
+  const { s, bx, by } = layout;
+  const toPx = (u) => [bx + u[0] * s, by + u[1] * s];
+  for (let i = 0; i < pieces.length; i++) {
+    const pl = placementFor(pieces[i], alt[i], cols, rows);
+    assert.ok(pl, 'piece ' + i + ' fits its new cells');
+    const st = states[i];
+    st.r = pl.r; // turn it in the tray first, as a player would with Rotate/Flip
+    st.f = pl.f;
+    const [sx, sy] = toPx(st.slot);
+    const [tx, ty] = toPx(Core.pivotForGrid(pieces[i], pl.r, pl.f, pl.g0));
+    canvas.fire('pointerdown', ptr(sx, sy));
+    canvas.fire('pointermove', ptr((sx + tx) / 2, (sy + ty) / 2));
+    canvas.fire('pointermove', ptr(tx + s * 0.1, ty - s * 0.1));
+    canvas.fire('pointerup', ptr(tx + s * 0.1, ty - s * 0.1));
+    assert.equal(st.placed, true, 'piece ' + i + ' placed');
+  }
+}
+
+test('a different arrangement that looks identical on a flat picture ends the game', async () => {
+  const env = makeEnv({ search: '?debug&seed=alt0', flatImage: true });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    await placeAlternateTiling(env, 5, 6);
+    await until(() => env.el('win').open, 4000);
+    assert.equal(env.pento().won, true);
+  } finally {
+    env.teardown();
+  }
+});
+
+test('a full board that does not match the picture says so instead of silently continuing', async () => {
+  const env = makeEnv({ search: '?debug&seed=alt0' }); // no pixel data: only the exact arrangement counts
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    await placeAlternateTiling(env, 5, 6);
+    assert.equal(env.pento().won, false, 'not solved');
+    assert.equal(env.el('notice').hidden, false, 'the player is told why');
+    assert.match(env.el('notice').textContent, /wrong spot/);
+
+    // Hint still helps: it points at a piece that is not where the picture wants it.
+    env.el('btn-hint').fire('click');
+    assert.equal(env.el('hints').hidden, false);
+  } finally {
+    env.teardown();
+  }
+});

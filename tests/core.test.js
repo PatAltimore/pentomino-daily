@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const C = require('../site/core.js');
+const { placementFor, otherTiling } = require('./tiling-helpers.cjs');
 
 const SIZES = [
   [5, 6],
@@ -199,6 +200,55 @@ test('share text marks a retry', () => {
   const t = C.shareText({ date: '2026-11-07', source: 'NASA picture', seconds: 65, moves: 3, hints: 0, retry: true });
   assert.match(t.split('\n')[0], /Nov 7 · 🔁 retry$/);
   assert.doesNotMatch(C.shareText({ date: '2026-11-07', seconds: 65, moves: 3, hints: 0 }), /retry/);
+});
+
+function flatVisual(cols, rows, value) {
+  const grids = {};
+  for (let x = 0; x < cols; x++) for (let y = 0; y < rows; y++) grids[x + ',' + y] = value(x, y);
+  return { n: 2, meanTol: 8, maxTol: 24, grids };
+}
+
+test('transformGrid turns slices the way pieces are drawn', () => {
+  const g = [1, 0, 0, 0]; // marker in the top-left of a 2x2
+  assert.deepEqual(C.transformGrid(g, 2, 0, false), [1, 0, 0, 0]);
+  assert.deepEqual(C.transformGrid(g, 2, 1, false), [0, 1, 0, 0], 'a quarter turn clockwise: top-right');
+  assert.deepEqual(C.transformGrid(g, 2, 2, false), [0, 0, 0, 1], 'half turn: bottom-right');
+  assert.deepEqual(C.transformGrid(g, 2, 0, true), [0, 1, 0, 0], 'flip left-right: top-right');
+  assert.deepEqual(C.transformGrid(g, 3, 1, false).length, 9);
+});
+
+test('a different arrangement counts as solved only when the picture looks the same there', () => {
+  const cols = 5;
+  const rows = 6;
+  let pieces = null;
+  let alt = null;
+  for (let seed = 1; seed < 300 && !alt; seed++) {
+    pieces = C.generateTiling(cols, rows, C.mulberry32(seed)).map((t, i) => C.buildPiece(t, i));
+    alt = otherTiling(pieces, cols, rows);
+  }
+  assert.ok(alt, 'found a puzzle with a second tiling');
+  const states = pieces.map((p, i) => {
+    const pl = placementFor(p, alt[i], cols, rows);
+    assert.ok(pl, 'piece fits its new cells');
+    return { placed: true, ...pl, pivot: [0, 0] };
+  });
+  assert.ok(C.boardFull(pieces, states), 'the board is full');
+  assert.ok(!C.isSolved(pieces, states), 'not solved without a picture to compare');
+
+  const flat = flatVisual(cols, rows, () => [10, 10, 10, 10]);
+  assert.ok(C.isSolved(pieces, states, flat), 'a flat picture looks the same in either arrangement');
+  assert.equal(C.misplaced(pieces, states, flat).length, 0);
+
+  const detailed = flatVisual(cols, rows, (x, y) => [x * 40 + y, y * 40 + x, 200 - x * 30, 100 + y * 20]);
+  assert.ok(!C.isSolved(pieces, states, detailed), 'a detailed picture shows the mix-up');
+  assert.ok(C.misplaced(pieces, states, detailed).length > 0);
+
+  // The right arrangement is solved either way, and an unplaced piece never is.
+  const home = pieces.map((p) => ({ placed: true, g0: p.home[0], r: 0, f: false, pivot: [0, 0] }));
+  assert.ok(C.isSolved(pieces, home, detailed));
+  home[0].placed = false;
+  assert.ok(!C.isSolved(pieces, home, flat));
+  assert.ok(!C.boardFull(pieces, home));
 });
 
 test('snapping, solving and un-solving', () => {

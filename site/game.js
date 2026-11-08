@@ -136,6 +136,49 @@
     var ch = iw / ih > aspect ? ih : iw / aspect;
     off.getContext('2d').drawImage(img, (iw - cw) / 2, (ih - ch) / 2, cw, ch, 0, 0, off.width, off.height);
     boardImg = { canvas: off, cell: cell };
+    visual = null;
+    visualTried = false;
+  }
+
+  // A small luminance grid per board cell, so the win check can tell when a different arrangement
+  // looks the same as the real picture (flat black sky, a smooth planet...). Null if the
+  // browser won't give us the pixels, in which case only the exact arrangement counts.
+  var visual = null;
+  var visualTried = false;
+  function getVisual() {
+    if (visual || visualTried || !boardImg) return visual;
+    visualTried = true;
+    try {
+      var n = 8;
+      var cell = boardImg.cell;
+      var pix = boardImg.canvas.getContext('2d').getImageData(0, 0, boardImg.canvas.width, boardImg.canvas.height);
+      if (!pix || !pix.data) return null;
+      var w = boardImg.canvas.width;
+      var block = Math.max(1, Math.floor(cell / n));
+      var grids = {};
+      for (var cx = 0; cx < cols; cx++) {
+        for (var cy = 0; cy < rows; cy++) {
+          var g = [];
+          for (var j = 0; j < n; j++) {
+            for (var i = 0; i < n; i++) {
+              var sum = 0;
+              var count = 0;
+              for (var y = 0; y < block; y++) {
+                for (var x = 0; x < block; x++) {
+                  var o = ((cy * cell + Math.min(cell - 1, j * block + y)) * w + cx * cell + Math.min(cell - 1, i * block + x)) * 4;
+                  sum += 0.299 * pix.data[o] + 0.587 * pix.data[o + 1] + 0.114 * pix.data[o + 2];
+                  count++;
+                }
+              }
+              g.push(sum / count);
+            }
+          }
+          grids[cx + ',' + cy] = g;
+        }
+      }
+      visual = { n: n, meanTol: 8, maxTol: 24, grids: grids };
+    } catch (e) { visual = null; }
+    return visual;
   }
 
   // -------------------------------------------------------------------- drawing
@@ -510,11 +553,10 @@
   // ----------------------------------------------------------------------- hints
   function useHint() {
     if (won || !pieces.length) return;
-    var wrong = pieces.filter(function (p, i) { return !C.isHome(p, states[i]); });
+    var wrong = C.misplaced(pieces, states, getVisual());
     if (!wrong.length) return;
-    var pick = selected >= 0 && !C.isHome(pieces[selected], states[selected])
-      ? pieces[selected]
-      : wrong[Math.floor(Math.random() * wrong.length)];
+    var sel = selected >= 0 ? pieces[selected] : null;
+    var pick = sel && wrong.indexOf(sel) >= 0 ? sel : wrong[Math.floor(Math.random() * wrong.length)];
     startClock();
     hints++;
     hintId = pick.id;
@@ -526,7 +568,26 @@
 
   // -------------------------------------------------------------------- win/lose
   function checkWin() {
-    if (!won && C.isSolved(pieces, states)) finish();
+    if (won) return;
+    if (C.isSolved(pieces, states, getVisual())) {
+      showNotice('');
+      finish();
+    } else if (C.boardFull(pieces, states)) {
+      // Everything is on the board but the picture isn't right. On a plain picture that is
+      // hard to see, so say so rather than leaving the player wondering why nothing happened.
+      showNotice('Every piece is placed, but some are in the wrong spot. Tap Hint to find one.');
+    } else {
+      showNotice('');
+    }
+  }
+
+  var noticeTimer = 0;
+  function showNotice(text) {
+    var el = $('notice');
+    clearTimeout(noticeTimer);
+    el.textContent = text;
+    el.hidden = !text;
+    if (text) noticeTimer = setTimeout(function () { el.hidden = true; }, 6000);
   }
 
   function finish() {

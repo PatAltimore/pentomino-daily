@@ -301,8 +301,89 @@
     return cellsAt(piece, st.r, st.f, st.g0).every((c) => home.has(c[0] + ',' + c[1]));
   }
 
-  function isSolved(pieces, states) {
-    return pieces.every((p, i) => isHome(p, states[i]));
+  // ------------------------------------------------------------ visual matching
+  //
+  // Pictures with big flat areas (black space, a plain sky) look the same in more than one
+  // arrangement, so a player can rebuild the picture a different way and see nothing wrong. A
+  // "visual" is a small luminance grid for every board cell of the picture; a piece counts as
+  // right if the slices it shows look like the picture that belongs in those cells.
+  //   visual = { n, meanTol, maxTol, grids: { "x,y": number[n*n] } }
+
+  /** Rotate/flip an n x n grid the way a piece's slices are drawn (T(p) = Rot^r(Flip^f(p))). */
+  function transformGrid(grid, n, r, f) {
+    const out = new Array(n * n);
+    const c = (n - 1) / 2;
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const q = applyT([i - c, j - c], r, f);
+        out[Math.round(q[1] + c) * n + Math.round(q[0] + c)] = grid[j * n + i];
+      }
+    }
+    return out;
+  }
+
+  function gridsMatch(a, b, meanTol, maxTol) {
+    let sum = 0;
+    let max = 0;
+    for (let i = 0; i < a.length; i++) {
+      const d = Math.abs(a[i] - b[i]);
+      sum += d;
+      if (d > max) max = d;
+    }
+    return sum / a.length <= meanTol && max <= maxTol;
+  }
+
+  /** Does every slice this placed piece shows look like the picture at the cell it sits on? */
+  function looksRight(piece, st, visual) {
+    if (!visual || !st.placed) return false;
+    const here = cellsAt(piece, st.r, st.f, st.g0);
+    for (let k = 0; k < here.length; k++) {
+      const want = visual.grids[here[k][0] + ',' + here[k][1]];
+      const slice = visual.grids[piece.home[k][0] + ',' + piece.home[k][1]];
+      if (!want || !slice) return false;
+      if (!gridsMatch(transformGrid(slice, visual.n, st.r, st.f), want, visual.meanTol, visual.maxTol)) return false;
+    }
+    return true;
+  }
+
+  /** A piece is right if it sits on its own cells, or shows slices that look like the picture there. */
+  function pieceFits(piece, st, visual) {
+    return isHome(piece, st) || looksRight(piece, st, visual);
+  }
+
+  /** The pieces that are still wrong: in the tray, or placed where the picture does not match. */
+  function misplaced(pieces, states, visual) {
+    return pieces.filter((p, i) => !pieceFits(p, states[i], visual));
+  }
+
+  /** True when every piece is on the board without overlap and each one fits. */
+  function isSolved(pieces, states, visual) {
+    const seen = new Set();
+    for (let i = 0; i < pieces.length; i++) {
+      const st = states[i];
+      if (!st.placed) return false;
+      for (const c of cellsAt(pieces[i], st.r, st.f, st.g0)) {
+        const k = c[0] + ',' + c[1];
+        if (seen.has(k)) return false;
+        seen.add(k);
+      }
+    }
+    return pieces.every((p, i) => pieceFits(p, states[i], visual));
+  }
+
+  /** True when every piece is placed without overlap (the board is full), right or not. */
+  function boardFull(pieces, states) {
+    const seen = new Set();
+    for (let i = 0; i < pieces.length; i++) {
+      const st = states[i];
+      if (!st.placed) return false;
+      for (const c of cellsAt(pieces[i], st.r, st.f, st.g0)) {
+        const k = c[0] + ',' + c[1];
+        if (seen.has(k)) return false;
+        seen.add(k);
+      }
+    }
+    return true;
   }
 
   // ----------------------------------------------------------------------- tray
@@ -442,6 +523,12 @@
     pivotForGrid,
     findSnap,
     isHome,
+    transformGrid,
+    gridsMatch,
+    looksRight,
+    pieceFits,
+    misplaced,
+    boardFull,
     isSolved,
     layoutTray,
     dayNumber,
