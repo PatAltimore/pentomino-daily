@@ -134,7 +134,7 @@ dialog p { margin: 0; }
   background: var(--panel);
   border-radius: 14px;
 }
-.puzzle-card .icon { font-size: 2rem; line-height: 1; }
+.puzzle-card .icon { font-size: 2rem; line-height: 1; width: 2.2rem; display: grid; place-items: center; }
 .puzzle-card .info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .puzzle-card .name { font-weight: 700; font-size: 1.05rem; }
 .puzzle-card .sub { color: var(--muted); font-size: 0.85rem; }

@@ -37,7 +37,7 @@
   // Each puzzle: which piece set it is cut from, board size ([portrait cols, rows]; landscape
   // pictures swap them) and whether pieces may be rotated and flipped.
   var PUZZLES = {
-    tetromino: { name: 'Tetromino puzzle', icon: '🧱', level: 'Easy', blurb: 'Artwork, 6 pieces of 4 cells', set: 'tetromino', grid: [4, 6], fixed: false },
+    tetromino: { name: 'Tetromino puzzle', icon: '🟪', iconShape: 'T', level: 'Easy', blurb: 'Artwork, 6 pieces of 4 cells', set: 'tetromino', grid: [4, 6], fixed: false },
     nasa: { name: 'NASA picture', icon: '🚀', level: 'Medium', blurb: 'A picture from NASA', set: 'pentomino', grid: [5, 6], fixed: false },
     wikipedia: { name: 'Wikipedia picture', icon: '📖', level: 'Medium', blurb: 'Wikipedia\'s picture of the day', set: 'pentomino', grid: [5, 6], fixed: false },
     fixed: { name: 'Fixed pieces', icon: '📌', level: 'Challenge', blurb: 'Artwork, 8 pieces, no turning', set: 'pentomino', grid: [5, 8], fixed: true },
@@ -792,6 +792,30 @@
     });
   }
 
+  // A small picture of a piece, for puzzles that have no good emoji. Falls back to the emoji.
+  function shapeIcon(letter) {
+    if (!document.createElementNS) return null;
+    var cells = (C.TETROMINOES[letter] || []);
+    if (!cells.length) return null;
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 3 3');
+    svg.setAttribute('width', '34');
+    svg.setAttribute('height', '34');
+    svg.setAttribute('aria-hidden', 'true');
+    cells.forEach(function (c) {
+      var r = document.createElementNS(ns, 'rect');
+      r.setAttribute('x', c[0] + 0.04);
+      r.setAttribute('y', c[1] + 0.04 + 0.5); // a T is 2 rows tall: centre it in the 3x3 box
+      r.setAttribute('width', 0.92);
+      r.setAttribute('height', 0.92);
+      r.setAttribute('rx', 0.14);
+      r.setAttribute('fill', '#a66cff');
+      svg.append(r);
+    });
+    return svg;
+  }
+
   function renderStart(items, day) {
     var box = $('puzzle-list');
     box.textContent = '';
@@ -803,7 +827,9 @@
       btn.className = 'puzzle-card';
       var icon = document.createElement('span');
       icon.className = 'icon';
-      icon.textContent = it.meta.icon;
+      var shape = it.meta.iconShape && shapeIcon(it.meta.iconShape);
+      if (shape) icon.append(shape);
+      else icon.textContent = it.meta.icon;
       var info = document.createElement('span');
       info.className = 'info';
       var name = document.createElement('span');
