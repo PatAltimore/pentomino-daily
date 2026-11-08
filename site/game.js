@@ -208,13 +208,19 @@
     }
   }
 
+  // Where the hinted piece belongs. Drawn on top of the pieces: on a full board its home cells are
+  // all covered, so underneath it would be invisible.
   function drawHint(p) {
     ctx.save();
     ctx.fillStyle = 'rgba(255, 180, 84, 0.3)';
     p.home.forEach(function (c) { ctx.fillRect(bx + c[0] * s, by + c[1] * s, s, s); });
     traceEdges(p, bx + p.centroid[0] * s, by + p.centroid[1] * s, s, 0, false);
-    ctx.setLineDash([6, 4]);
-    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([8, 5]);
+    ctx.lineWidth = 5; // dark underlay so the dashes show on light and dark parts of the picture
+    ctx.strokeStyle = 'rgba(8, 10, 20, 0.85)';
+    ctx.stroke();
+    ctx.lineWidth = 3;
     ctx.strokeStyle = ACCENT;
     ctx.stroke();
     ctx.restore();
@@ -300,8 +306,8 @@
     roundRectPath(PAD, trayTop - 6, W - 2 * PAD, Math.max(20, H - trayTop - PAD + 6), 10);
     ctx.fill();
 
-    if (hintId >= 0) drawHint(pieces[hintId]);
     for (var z = 0; z < zOrder.length; z++) drawPiece(zOrder[z]);
+    if (hintId >= 0) drawHint(pieces[hintId]);
   }
 
   // ------------------------------------------------------------------- hit test
@@ -560,10 +566,10 @@
     startClock();
     hints++;
     hintId = pick.id;
+    select(pick.id); // the piece glows, so it is clear which piece the dashed spot is for
+    showNotice('Hint: the glowing piece belongs in the dashed spot.', 4000);
     clearTimeout(hintTimer);
-    hintTimer = setTimeout(function () { hintId = -1; invalidate(); }, 2200);
-    updateHud();
-    invalidate();
+    hintTimer = setTimeout(function () { hintId = -1; invalidate(); }, 4000);
   }
 
   // -------------------------------------------------------------------- win/lose
@@ -582,12 +588,12 @@
   }
 
   var noticeTimer = 0;
-  function showNotice(text) {
+  function showNotice(text, ms) {
     var el = $('notice');
     clearTimeout(noticeTimer);
     el.textContent = text;
     el.hidden = !text;
-    if (text) noticeTimer = setTimeout(function () { el.hidden = true; }, 6000);
+    if (text) noticeTimer = setTimeout(function () { el.hidden = true; }, ms || 6000);
   }
 
   function finish() {
@@ -916,6 +922,8 @@
       get states() { return states; },
       get layout() { return { s: s, bx: bx, by: by, cols: cols, rows: rows, trayTop: trayTop, rho: tray.rho }; },
       get won() { return won; },
+      get hintId() { return hintId; },
+      get selected() { return selected; },
     };
   }
 

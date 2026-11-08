@@ -12,14 +12,19 @@ const { placementFor, otherTiling } = require('./tiling-helpers.cjs');
 const SITE = path.join(__dirname, '..', 'site');
 const GAME_SRC = fs.readFileSync(path.join(SITE, 'game.js'), 'utf8');
 
-function makeEnv({ search = '?debug', hash = '#sample', storage = new Map(), imageSize = [1000, 1200], files = {}, flatImage = false } = {}) {
+function makeEnv({ search = '?debug', hash = '#sample', storage = new Map(), imageSize = [1000, 1200], files = {}, flatImage = false, recordCalls = false } = {}) {
   const hashLog = [];
   const intervals = new Set();
   const els = {};
   // flatImage: getImageData reports one flat colour, like a picture of plain black sky.
   const flatPixels = (x, y, w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4).fill(120) });
+  const calls = recordCalls ? [] : null; // names of canvas calls, to check draw order
   const ctx2d = new Proxy({}, {
-    get: (t, k) => (k === 'getImageData' && flatImage ? flatPixels : k in t ? t[k] : () => {}),
+    get: (t, k) => {
+      if (k === 'getImageData' && flatImage) return flatPixels;
+      const base = k in t ? t[k] : () => {};
+      return calls && typeof base === 'function' ? (...a) => (calls.push(k), base(...a)) : base;
+    },
     set: (t, k, v) => ((t[k] = v), true),
   });
 
@@ -136,6 +141,7 @@ function makeEnv({ search = '?debug', hash = '#sample', storage = new Map(), ima
     el,
     sandbox,
     clipboard,
+    calls,
     hashLog,
     docHandlers,
     pento: () => sandbox.__pento,
@@ -629,6 +635,33 @@ test('a full board that does not match the picture says so instead of silently c
     // Hint still helps: it points at a piece that is not where the picture wants it.
     env.el('btn-hint').fire('click');
     assert.equal(env.el('hints').hidden, false);
+  } finally {
+    env.teardown();
+  }
+});
+
+
+test('on a full board the hint is drawn on top of the pieces and the hinted piece is selected', async () => {
+  const env = makeEnv({ search: '?debug&seed=alt0', recordCalls: true });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    await placeAlternateTiling(env, 5, 6);
+    assert.equal(env.pento().won, false);
+    assert.equal(env.pento().hintId, -1);
+
+    env.calls.length = 0;
+    env.el('btn-hint').fire('click');
+    const hinted = env.pento().hintId;
+    assert.ok(hinted >= 0, 'a piece is hinted');
+    assert.equal(env.pento().selected, hinted, 'the hinted piece is selected so it glows');
+    assert.match(env.el('notice').textContent, /Hint: the glowing piece belongs in the dashed spot/);
+    assert.equal(env.el('timer').textContent, '0:15', 'a hint still costs the 15 second penalty');
+
+    await new Promise((r) => setTimeout(r, 30)); // let the frame draw
+    const frame = env.calls.slice(env.calls.lastIndexOf('clearRect'));
+    assert.ok(frame.includes('setLineDash'), 'the hint outline is drawn');
+    assert.ok(frame.indexOf('setLineDash') > frame.lastIndexOf('drawImage'), 'after every piece, so it is not hidden under them');
   } finally {
     env.teardown();
   }
