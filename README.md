@@ -17,6 +17,7 @@ It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it h
   - The artwork puzzles are picked by date from the Art Institute's public-domain (CC0) works, so any day can be generated, including tomorrow in UTC (needed for time zones ahead of UTC).
   - The two picture-of-the-day puzzles show the *previous* day's picture. Today's picture isn't published yet in every time zone at local midnight, but yesterday's always is.
   - Results are stored per puzzle and day. The start page shows the time of any you have solved and "Not available" for one whose picture couldn't be fetched.
+  - APOD sometimes publishes the NASA logo (titled "NASA Science") instead of a picture. That is ignored, as is any picture that is byte-for-byte identical to another day's, and a NASA library picture is used instead.
   - If a source is down, stand-in pictures keep the puzzle available (NASA library for APOD; older Wikipedia pictures for the Art Institute), and are swapped for the real one when the source returns. The deploy also remembers everything it fetched between runs.
 - **Same puzzle for everyone.** The puzzle source and date seed a random generator that tiles the grid with pentominoes. Pieces use distinct shapes where possible, and a solution always exists because the pieces are cut from a complete tiling.
 - **The picture is the hint.** Each piece shows its slice of the image, and it only counts when it sits in the right spot facing the right way. Pieces start scrambled in the tray, turned and flipped.

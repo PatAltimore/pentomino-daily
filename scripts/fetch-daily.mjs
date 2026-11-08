@@ -31,6 +31,7 @@
  * Pictures already fetched (restored from the previous run's cache) are kept, and a source that
  * errors is not retried for the rest of the run. Exits non-zero only if nothing is available.
  */
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -50,9 +51,14 @@ const tidy = (value, max) => {
   return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
 };
 
+// APOD sometimes publishes a stand-in (the NASA logo, titled "NASA Science") instead of a picture.
+const PLACEHOLDER_TITLE = /^\s*nasa science\s*$/i;
+export const isPlaceholderTitle = (title) => PLACEHOLDER_TITLE.test(String(title ?? ''));
+
 /** Turn a NASA APOD API response into a pick, or null if it can't be used. */
 export function pickApod(json, { allowCopyrighted = false } = {}) {
   if (!json || json.media_type !== 'image') return null; // videos can't be sliced
+  if (isPlaceholderTitle(json.title)) return null; // the logo stand-in, not a picture of the day
   if (!/^\d{4}-\d{2}-\d{2}$/.test(json.date || '')) return null;
   if (json.copyright && !allowCopyrighted) return null;
   const imageUrls = [json.url, json.hdurl].filter(Boolean); // url is the web-sized version; hdurl can be huge
@@ -124,10 +130,11 @@ export function pickArtic(json, { date, seed, skipIds = [] } = {}) {
 }
 
 /** NASA Image and Video Library: pick one result from a search response by seed. */
-export function pickNasaLibraryItem(json, seed) {
+export function pickNasaLibraryItem(json, seed, skipIds = []) {
   const items = ((json && json.collection && json.collection.items) || []).filter((it) => {
     const d = it && it.data && it.data[0];
     if (!d || !d.nasa_id || d.media_type !== 'image') return false;
+    if (skipIds.includes(d.nasa_id)) return false;
     // The library mixes in a few pictures with outside credits; keep to plain NASA ones.
     return !/copyright|©/i.test([d.description, d.secondary_creator, d.photographer].join(' '));
   });
@@ -149,6 +156,7 @@ export function buildNasaLibraryPick(item, assetJson, date) {
   const who = d.secondary_creator || d.photographer || d.center || '';
   return {
     source: 'NASA Image and Video Library',
+    id: d.nasa_id,
     date,
     title: tidy(d.title || 'NASA picture', 120),
     description: tidy(stripHtml(d.description_508 || d.description), 1500),
@@ -270,10 +278,34 @@ const entryPath = (day, key) => path.join(SITE, 'data', day, `${key}.json`);
 function readEntry(day, key) {
   try {
     const info = JSON.parse(readFileSync(entryPath(day, key), 'utf8'));
+    if (isPlaceholderTitle(info.title)) return null; // saved before placeholders were rejected: refetch
     return existsSync(path.join(SITE, info.image)) ? info : null;
   } catch {
     return null;
   }
+}
+
+/** Ids (artwork or NASA library item) other entries already use, so two days don't get one picture. */
+function usedItemIds(days, keys, exceptDay, exceptKey) {
+  const ids = [];
+  for (const d of days) {
+    for (const k of keys) {
+      if (d === exceptDay && k === exceptKey) continue;
+      const e = readEntry(d, k);
+      if (e && e.itemId) ids.push(e.itemId);
+    }
+  }
+  return ids;
+}
+
+/** The day another entry for this puzzle already uses exactly this image, if any. */
+function sameImageElsewhere(days, key, day, hash) {
+  for (const d of days) {
+    if (d === day) continue;
+    const e = readEntry(d, key);
+    if (e && e.sha256 === hash) return d;
+  }
+  return null;
 }
 
 async function writeEntry(day, key, pick, { buf, ext }, extra) {
@@ -378,13 +410,13 @@ const NASA_LIBRARY_TOPICS = [
 ];
 
 /** NASA Image and Video Library (images-api.nasa.gov), used when the APOD picture is unavailable. */
-async function fetchNasaLibrary(day) {
+async function fetchNasaLibrary(day, skipIds = []) {
   const topic = NASA_LIBRARY_TOPICS[hashSeed('topic:' + day) % NASA_LIBRARY_TOPICS.length];
   const search = await fetchJson(
     `https://images-api.nasa.gov/search?q=${encodeURIComponent(topic)}&media_type=image&page_size=100`,
     45000,
   );
-  const item = pickNasaLibraryItem(search, day + ':' + topic);
+  const item = pickNasaLibraryItem(search, day + ':' + topic, skipIds);
   if (!item) return null;
   let assets = null;
   try {
@@ -421,16 +453,16 @@ async function main() {
 
   // For a day and puzzle: sources to try in order. `fallback` marks a stand-in picture; those are
   // replaced as soon as the preferred source works again.
-  const chainFor = (day, key, skipIds) => {
+  const chainFor = (day, key) => {
     const before = (n) => shiftDate(day, -n);
     const chain = [];
     if (key === 'nasa') {
       if (want('apod')) chain.push({ name: 'NASA APOD', run: () => fetchApodOn(before(1), apiKey, allowCopyrighted) });
-      if (want('apod')) chain.push({ name: 'NASA Image and Video Library', fallback: true, run: () => fetchNasaLibrary(day) });
+      if (want('apod')) chain.push({ name: 'NASA Image and Video Library', fallback: true, run: () => fetchNasaLibrary(day, usedItemIds(days, ['nasa'], day, key)) });
     } else if (key === 'wikipedia') {
       if (want('wikimedia')) chain.push({ name: 'Wikipedia Picture of the day', run: () => fetchWikipedia(before(1)) });
     } else {
-      if (want('artic')) chain.push({ name: 'Art Institute of Chicago', run: () => fetchArtic(day, key, skipIds) });
+      if (want('artic')) chain.push({ name: 'Art Institute of Chicago', run: () => fetchArtic(day, key, usedItemIds(days, ['tetromino', 'fixed'], day, key)) });
       if (want('wikimedia')) {
         const n = key === 'tetromino' ? 2 : 3; // distinct from the "wikipedia" puzzle's day-1 picture
         chain.push({ name: `Wikipedia Picture of the day (${n} days back)`, fallback: true, run: () => fetchWikipedia(before(n)) });
@@ -444,7 +476,7 @@ async function main() {
     for (const key of KEYS) {
       const existing = readEntry(day, key);
       if (existing && !existing.fallback && !force) continue; // already have the preferred picture
-      let chain = chainFor(day, key, key === 'fixed' ? [readEntry(day, 'tetromino')?.artworkId].filter(Boolean) : []);
+      let chain = chainFor(day, key);
       if (existing && existing.fallback && !force) chain = chain.filter((c) => !c.fallback); // only try to upgrade
       for (const c of chain) {
         if (down.has(c.name.replace(/ \(.*\)$/, ''))) continue;
@@ -455,8 +487,15 @@ async function main() {
             console.log('  Skipped: no usable picture (video, copyrighted or missing).');
             continue;
           }
-          const extra = { ...(c.fallback ? { fallback: true } : {}), ...(pick.id ? { artworkId: pick.id } : {}) };
-          const entry = await writeEntry(day, key, pick, await download(pick.imageUrls), extra);
+          const extra = { ...(c.fallback ? { fallback: true } : {}), ...(pick.id ? { itemId: pick.id } : {}) };
+          const downloaded = await download(pick.imageUrls);
+          const sha256 = createHash('sha256').update(downloaded.buf).digest('hex');
+          const dup = sameImageElsewhere(days, key, day, sha256);
+          if (dup) { // the same picture two days running is a placeholder, not a daily picture
+            console.log(`  Skipped: identical image to ${dup}.`);
+            continue;
+          }
+          const entry = await writeEntry(day, key, pick, downloaded, { ...extra, sha256 });
           console.log(`  Saved "${entry.title}" (${entry.date}) from ${entry.source}`);
           saved++;
           break;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pickApod, pickWikimedia, pickArtic, pickNasaLibraryItem, buildNasaLibraryPick, hashSeed } from '../scripts/fetch-daily.mjs';
+import { pickApod, isPlaceholderTitle, pickWikimedia, pickArtic, pickNasaLibraryItem, buildNasaLibraryPick, hashSeed } from '../scripts/fetch-daily.mjs';
 
 const apod = {
   date: '2026-11-07',
@@ -18,6 +18,15 @@ test('APOD: public-domain image is picked with a page link built from the date',
   assert.equal(pick.description, 'Gas and dust.');
   assert.deepEqual(pick.imageUrls, [apod.url, apod.hdurl]);
   assert.match(pick.credit, /NASA/);
+});
+
+test('APOD: the "NASA Science" logo stand-in is not a picture of the day', () => {
+  assert.equal(pickApod({ ...apod, title: 'NASA Science' }), null);
+  assert.equal(pickApod({ ...apod, title: ' nasa science ' }), null);
+  assert.ok(pickApod({ ...apod, title: 'NASA Science Live: a nebula' }), 'only the exact placeholder title');
+  assert.equal(isPlaceholderTitle('NASA Science'), true);
+  assert.equal(isPlaceholderTitle('Orion Nebula'), false);
+  assert.equal(isPlaceholderTitle(undefined), false);
 });
 
 test('APOD: videos and copyrighted images are skipped unless allowed', () => {
@@ -154,4 +163,13 @@ test('NASA library: prefers the large image, then medium, then the preview', () 
   const previewOnly = buildNasaLibraryPick(item, null, '2026-11-07');
   assert.deepEqual(previewOnly.imageUrls, ['https://images-assets.nasa.gov/image/X/X~thumb.jpg']);
   assert.equal(buildNasaLibraryPick({ data: item.data, links: [] }, null, 'd'), null);
+});
+
+test('NASA library: skipIds keeps a day from reusing a picture another day already has', () => {
+  const json = { collection: { items: [libItem('A'), libItem('B'), libItem('C')] } };
+  const first = pickNasaLibraryItem(json, 'seed');
+  const second = pickNasaLibraryItem(json, 'seed', [first.data[0].nasa_id]);
+  assert.notEqual(first.data[0].nasa_id, second.data[0].nasa_id);
+  assert.equal(pickNasaLibraryItem(json, 'seed', ['A', 'B', 'C']), null);
+  assert.equal(buildNasaLibraryPick(first, null, 'd').id, first.data[0].nasa_id);
 });
