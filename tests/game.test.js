@@ -221,6 +221,7 @@ test('plays through a whole puzzle, then remembers it was solved', async () => {
     const date = [...storage.keys()].find((k) => k.startsWith('pd:done:')).slice('pd:done:'.length);
     const done = JSON.parse(storage.get('pd:done:' + date));
     assert.equal(done.hints, 1);
+    assert.equal(done.mirrored, undefined, 'a normal solve carries no mirrored note');
     assert.ok(done.moves >= 12, 'moves counted: ' + done.moves);
     assert.ok(done.seconds >= 15);
     const stats = JSON.parse(storage.get('pd:stats'));
@@ -737,3 +738,58 @@ test('R turns clockwise, Shift+R counter-clockwise, and tapping a selected piece
     env.teardown();
   }
 });
+
+
+// Drags every piece to the mirror-image spot, flipped, as a player rebuilding the picture reversed would.
+async function placeMirrored(env, mode) {
+  const canvas = env.el('board');
+  const { pieces, states, layout } = env.pento();
+  const board = { cols: layout.cols, rows: layout.rows };
+  const { s, bx, by } = layout;
+  const toPx = (u) => [bx + u[0] * s, by + u[1] * s];
+  const [r, f] = mode === 'horizontal' ? [0, true] : [2, true];
+  for (let i = 0; i < pieces.length; i++) {
+    const st = states[i];
+    st.r = r; // turn it in the tray first, as a player would with the buttons
+    st.f = f;
+    const [sx, sy] = toPx(st.slot);
+    const [tx, ty] = toPx(Core.pivotForGrid(pieces[i], r, f, Core.mirrorCell(mode, pieces[i].home[0], board)));
+    canvas.fire('pointerdown', ptr(sx, sy));
+    canvas.fire('pointermove', ptr((sx + tx) / 2, (sy + ty) / 2));
+    canvas.fire('pointermove', ptr(tx + s * 0.1, ty - s * 0.1));
+    canvas.fire('pointerup', ptr(tx + s * 0.1, ty - s * 0.1));
+    assert.equal(st.placed, true, 'piece ' + i + ' placed');
+  }
+}
+
+for (const mode of ['horizontal', 'vertical']) {
+  test('a picture rebuilt mirrored ' + mode + 'ly ends the game and the time says so', async () => {
+    const storage = new Map();
+    const env = makeEnv({ storage, search: '?debug' });
+    try {
+      await until(() => env.pento() && env.pento().pieces.length > 0);
+      env.el('help').open = false;
+      await placeMirrored(env, mode);
+      await until(() => env.el('win').open, 4000);
+      assert.equal(env.pento().won, true);
+
+      const key = [...storage.keys()].find((k) => k.startsWith('pd:done:'));
+      assert.equal(JSON.parse(storage.get(key)).mirrored, mode, 'the saved result records it');
+      assert.match(env.el('win-stats').textContent, new RegExp('🪞 mirrored ' + mode + 'ly'));
+      assert.equal(JSON.parse(storage.get('pd:stats')).streak, 1, 'it still counts for the streak');
+
+      env.el('btn-share').fire('click');
+      await until(() => env.clipboard.text);
+      assert.match(env.clipboard.text, new RegExp('🪞 mirrored ' + mode + 'ly'));
+      env.teardown();
+
+      // Coming back later the same day still shows the note.
+      const again = makeEnv({ storage, search: '?debug' });
+      await until(() => again.el('win').open, 3000);
+      assert.match(again.el('win-stats').textContent, /mirrored/);
+      again.teardown();
+    } finally {
+      env.teardown();
+    }
+  });
+}

@@ -333,6 +333,52 @@
     return sum / a.length <= meanTol && max <= maxTol;
   }
 
+  // ------------------------------------------------------- mirrored solutions
+  //
+  // A player can also rebuild the whole picture as a mirror image: every piece flipped and sitting
+  // at its mirror-image spot. That is a complete, valid solution, so it counts. `mode` is
+  //   'normal'      the picture as it is
+  //   'horizontal'  mirrored left-to-right
+  //   'vertical'    mirrored top-to-bottom
+  // The mirrored arrangement of a piece is (r=0, flipped) for horizontal and (r=2, flipped) for
+  // vertical, at the mirrored position of its home cell.
+
+  const MIRROR_MODES = ['normal', 'horizontal', 'vertical'];
+
+  /** Where a home cell ends up under a mode on a cols x rows board (each mirror is its own inverse). */
+  function mirrorCell(mode, cell, board) {
+    if (mode === 'horizontal') return [board.cols - 1 - cell[0], cell[1]];
+    if (mode === 'vertical') return [cell[0], board.rows - 1 - cell[1]];
+    return [cell[0], cell[1]];
+  }
+
+  /** The orientation that turns a slice into its mirror image under a mode. */
+  function mirrorOrientation(mode) {
+    if (mode === 'horizontal') return [0, true];
+    if (mode === 'vertical') return [2, true];
+    return [0, false];
+  }
+
+  /**
+   * Does this placed piece fit the picture under a mode: does it cover exactly the (mirrored)
+   * home cells, or show slices that look like the (mirrored) picture in the cells it sits on?
+   */
+  function pieceFitsUnder(piece, st, visual, mode, board) {
+    if (!st.placed) return false;
+    const here = cellsAt(piece, st.r, st.f, st.g0);
+    const want = new Set(piece.home.map((c) => mirrorCell(mode, c, board).join(',')));
+    if (here.every((c) => want.has(c.join(',')))) return true;
+    if (!visual) return false;
+    const [mr, mf] = mirrorOrientation(mode);
+    for (let k = 0; k < here.length; k++) {
+      const shown = transformGrid(visual.grids[piece.home[k][0] + ',' + piece.home[k][1]] || [], visual.n, st.r, st.f);
+      const source = visual.grids[mirrorCell(mode, here[k], board).join(',')];
+      if (!source || shown.length !== source.length) return false;
+      if (!gridsMatch(shown, transformGrid(source, visual.n, mr, mf), visual.meanTol, visual.maxTol)) return false;
+    }
+    return true;
+  }
+
   /** Does every slice this placed piece shows look like the picture at the cell it sits on? */
   function looksRight(piece, st, visual) {
     if (!visual || !st.placed) return false;
@@ -356,21 +402,6 @@
     return pieces.filter((p, i) => !pieceFits(p, states[i], visual));
   }
 
-  /** True when every piece is on the board without overlap and each one fits. */
-  function isSolved(pieces, states, visual) {
-    const seen = new Set();
-    for (let i = 0; i < pieces.length; i++) {
-      const st = states[i];
-      if (!st.placed) return false;
-      for (const c of cellsAt(pieces[i], st.r, st.f, st.g0)) {
-        const k = c[0] + ',' + c[1];
-        if (seen.has(k)) return false;
-        seen.add(k);
-      }
-    }
-    return pieces.every((p, i) => pieceFits(p, states[i], visual));
-  }
-
   /** True when every piece is placed without overlap (the board is full), right or not. */
   function boardFull(pieces, states) {
     const seen = new Set();
@@ -384,6 +415,24 @@
       }
     }
     return true;
+  }
+
+  /**
+   * How the puzzle is solved, or null if it isn't: 'normal', or 'horizontal' / 'vertical' for a
+   * mirror image. Every piece must fit under the same mode. `board` ({cols, rows}) is needed to
+   * recognise mirrored solutions; without it only 'normal' is considered.
+   */
+  function solvedMode(pieces, states, visual, board) {
+    if (!boardFull(pieces, states)) return null;
+    for (const mode of board ? MIRROR_MODES : ['normal']) {
+      if (pieces.every((p, i) => pieceFitsUnder(p, states[i], visual, mode, board || { cols: 0, rows: 0 }))) return mode;
+    }
+    return null;
+  }
+
+  /** True when every piece is on the board without overlap and the picture is right (any mode). */
+  function isSolved(pieces, states, visual, board) {
+    return solvedMode(pieces, states, visual, board) !== null;
   }
 
   // ----------------------------------------------------------------------- tray
@@ -500,6 +549,7 @@
   function shareText(o) {
     const parts = ['⏱ ' + formatTime(o.seconds), '🔄 ' + o.moves + (o.moves === 1 ? ' move' : ' moves')];
     if (o.hints) parts.push('💡 ' + o.hints + (o.hints === 1 ? ' hint' : ' hints'));
+    if (o.mirrored) parts.push('🪞 mirrored ' + o.mirrored + 'ly');
     return (
       '🧩 Pentomino Daily · ' + (o.source ? o.source + ' · ' : '') + formatDateShort(o.date) + (o.retry ? ' · 🔁 retry' : '') + '\n' + parts.join(' · ') + (o.url ? '\n' + o.url : '')
     );
@@ -529,6 +579,8 @@
     pieceFits,
     misplaced,
     boardFull,
+    mirrorCell,
+    solvedMode,
     isSolved,
     layoutTray,
     dayNumber,

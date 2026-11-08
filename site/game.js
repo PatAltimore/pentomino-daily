@@ -581,9 +581,11 @@
   // -------------------------------------------------------------------- win/lose
   function checkWin() {
     if (won) return;
-    if (C.isSolved(pieces, states, getVisual())) {
+    // Solved the usual way, or rebuilt as a mirror image of the picture: both count.
+    var mode = C.solvedMode(pieces, states, getVisual(), { cols: cols, rows: rows });
+    if (mode) {
       showNotice('');
-      finish();
+      finish(mode);
     } else if (C.boardFull(pieces, states)) {
       // Everything is on the board but the picture isn't right. On a plain picture that is
       // hard to see, so say so rather than leaving the player wondering why nothing happened.
@@ -602,7 +604,7 @@
     if (text) noticeTimer = setTimeout(function () { el.hidden = true; }, ms || 6000);
   }
 
-  function finish() {
+  function finish(mode) {
     won = true;
     // A symmetric piece may sit in its mirrored/turned twin orientation; show it the
     // way the picture is cut so the finished photo is exactly right.
@@ -618,6 +620,7 @@
     stopClock();
     var seconds = Math.round(elapsed() + hints * C.HINT_PENALTY_SECONDS);
     var result = { seconds: seconds, moves: moves, hints: hints };
+    if (mode && mode !== 'normal') result.mirrored = mode; // 'horizontal' or 'vertical'
     if (!params.has('seed') && !practice) {
       store.set(doneKey(puzzleKey, puzzleDate), result);
       if (puzzleDate === currentDay) { // earlier days don't count toward the streak or best time
@@ -646,6 +649,7 @@
     }
     var bits = ['⏱ ' + C.formatTime(result.seconds), '🔄 ' + result.moves];
     if (result.hints) bits.push('💡 ' + result.hints);
+    if (result.mirrored) bits.push('🪞 mirrored ' + result.mirrored + 'ly');
     if (practice) bits.push('🔁 retry');
     if (stats.streak) bits.push('🔥 ' + stats.streak + '-day streak');
     if (stats.best !== null && stats.best !== undefined) bits.push('best ' + C.formatTime(stats.best));
@@ -660,6 +664,7 @@
     var text = C.shareText({
       date: puzzleDate,
       retry: practice,
+      mirrored: lastResult.mirrored,
       source: data.sample ? '' : puzzleCfg.name,
       seconds: lastResult.seconds,
       moves: lastResult.moves,
@@ -851,7 +856,7 @@
         if (done) {
           solved++;
           btn.className += ' done';
-          badge.textContent = '✓ ' + C.formatTime(done.seconds);
+          badge.textContent = '✓ ' + C.formatTime(done.seconds) + (done.mirrored ? ' 🪞' : '');
         } else {
           badge.textContent = 'Play';
         }

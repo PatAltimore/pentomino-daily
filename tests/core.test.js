@@ -251,6 +251,44 @@ test('a different arrangement counts as solved only when the picture looks the s
   assert.ok(!C.boardFull(pieces, home));
 });
 
+test('a picture rebuilt as a mirror image counts as solved, and says which way', () => {
+  const cols = 5;
+  const rows = 6;
+  const board = { cols, rows };
+  for (const seed of [11, 3, 27]) {
+    const pieces = C.generateTiling(cols, rows, C.mulberry32(seed)).map((t, i) => C.buildPiece(t, i));
+    const make = (r, f, mode) =>
+      pieces.map((p) => ({ placed: true, r, f, g0: C.mirrorCell(mode, p.home[0], board), pivot: [0, 0] }));
+
+    const normal = make(0, false, 'normal');
+    const horizontal = make(0, true, 'horizontal'); // every piece flipped, at its left-right mirror spot
+    const vertical = make(2, true, 'vertical'); // flipped and turned half a turn: a top-bottom mirror
+    assert.equal(C.solvedMode(pieces, normal, null, board), 'normal');
+    assert.equal(C.solvedMode(pieces, horizontal, null, board), 'horizontal');
+    assert.equal(C.solvedMode(pieces, vertical, null, board), 'vertical');
+    assert.ok(C.isSolved(pieces, horizontal, null, board));
+
+    // Without the board size only the plain picture can be recognised.
+    assert.equal(C.solvedMode(pieces, normal), 'normal');
+    assert.equal(C.solvedMode(pieces, horizontal), null);
+    assert.ok(!C.isSolved(pieces, vertical));
+
+    // Mixing the two (some pieces plain, some mirrored) is not a solution.
+    const mixed = horizontal.map((st, i) => (i === 0 ? normal[i] : st));
+    assert.equal(C.solvedMode(pieces, mixed, null, board), null);
+    // Neither is a mirror image with a piece missing.
+    const gap = horizontal.map((st, i) => (i === 0 ? { ...st, placed: false } : st));
+    assert.equal(C.solvedMode(pieces, gap, null, board), null);
+  }
+});
+
+test('share text notes a mirrored solve', () => {
+  const base = { date: '2026-11-07', seconds: 65, moves: 3, hints: 0 };
+  assert.match(C.shareText({ ...base, mirrored: 'horizontal' }), /⏱ 1:05 · 🔄 3 moves · 🪞 mirrored horizontally/);
+  assert.match(C.shareText({ ...base, mirrored: 'vertical' }), /🪞 mirrored vertically/);
+  assert.doesNotMatch(C.shareText(base), /mirrored/);
+});
+
 test('snapping, solving and un-solving', () => {
   const cols = 5;
   const rows = 6;
