@@ -4,10 +4,11 @@ on:
   push:
     branches: [main]
   schedule:
-    # Once shortly after APOD rolls over (US Eastern midnight), plus a backup run.
-    # GitHub's scheduler is best-effort, so the second run catches a missed first one.
-    - cron: '20 5 * * *'
-    - cron: '50 8 * * *'
+    # Hourly, at an off-peak minute. GitHub's scheduler is best-effort and often late or skips
+    # runs, so two daily runs left yesterday's puzzles up for hours after the date changed.
+    # Running every hour means a missed run is made up for within the hour, and the fetch
+    # script skips pictures it already has for today, so most runs change nothing.
+    - cron: '17 * * * *'
   workflow_dispatch:
 
 permissions:

@@ -18,13 +18,14 @@
  * Environment:
  *   NASA_API_KEY        free key from https://api.nasa.gov (falls back to the rate-limited DEMO_KEY)
  *   IMAGE_SOURCE        auto (default, all) | apod | wikimedia | artic
+ *   FORCE_REFETCH       set to 1 to fetch every picture even if today's is already in site/
  *   ALLOW_COPYRIGHTED   "true" to use APOD pictures that carry a photographer's copyright.
  *                       Default is to skip them, because this script republishes the image file.
  *
  * Exits non-zero only if nothing could be fetched or kept from a previous run, so a scheduled
  * deploy keeps the previous puzzles live. A puzzle with no picture shows as unavailable.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -181,9 +182,16 @@ export function pickWikimedia(json, date) {
   };
 }
 
+/** Headers for a request; the Art Institute asks API clients to identify themselves in AIC-User-Agent. */
+function headersFor(url, extra) {
+  const headers = { 'User-Agent': USER_AGENT, ...extra };
+  if (/(^|\.)artic\.edu$/.test(new URL(url).hostname)) headers['AIC-User-Agent'] = USER_AGENT;
+  return headers;
+}
+
 async function fetchJson(url, timeoutMs = 20000) {
   const res = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    headers: headersFor(url, { Accept: 'application/json' }),
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
@@ -199,7 +207,7 @@ async function download(urls) {
   let lastError = new Error('No image URL to download');
   for (const url of urls) {
     try {
-      const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(60000) });
+      const res = await fetch(url, { headers: headersFor(url, {}), signal: AbortSignal.timeout(60000) });
       if (!res.ok) throw new Error(`HTTP ${res.status} downloading the image`);
       const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
       const ext = MIME_EXT[type];
@@ -272,6 +280,20 @@ async function fetchWikipedia(daysBack) {
 }
 
 const todayUtc = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * True when a picture for `key` dated today is already in site/ (restored from the previous run's
+ * cache). The deploy runs hourly, so skipping these keeps today's puzzle from changing under a
+ * player (say, from a fallback picture to the preferred source) and saves needless requests.
+ */
+function haveTodaysPicture(key) {
+  try {
+    const info = JSON.parse(readFileSync(path.join(SITE, 'data', `${key}.json`), 'utf8'));
+    return info.date === todayUtc() && existsSync(path.join(SITE, info.image));
+  } catch {
+    return false;
+  }
+}
 
 /** A public-domain artwork from the Art Institute of Chicago, chosen by date (and puzzle key). */
 async function fetchArtic(key, skipIds) {
@@ -361,6 +383,11 @@ async function main() {
   let saved = 0;
   let kept = 0;
   for (const [key, chain] of Object.entries(chains)) {
+    if (!process.env.FORCE_REFETCH && haveTodaysPicture(key)) {
+      console.log(`[${key}] Already have today's picture; keeping it.`);
+      kept++;
+      continue;
+    }
     let done = false;
     for (const [name, attempt] of chain) {
       try {
