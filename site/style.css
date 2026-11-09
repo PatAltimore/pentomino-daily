@@ -161,6 +161,10 @@ dialog p { margin: 0; }
   bottom: 12px;
   margin: 0;
   padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   text-align: center;
   font-size: 0.9rem;
   color: var(--text);
@@ -169,4 +173,8 @@ dialog p { margin: 0; }
   border-radius: 12px;
   pointer-events: none;
 }
+#notice.asking { pointer-events: auto; }
+#notice-actions { display: flex; gap: 8px; }
+#notice-actions[hidden] { display: none; }
+#notice-actions button { padding: 8px 14px; }
 #notice[hidden] { display: none; }

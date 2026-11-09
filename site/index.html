@@ -47,7 +47,13 @@
     <main id="stage">
       <canvas id="board" role="img" aria-label="Puzzle board with loose pentomino pieces below it"></canvas>
       <p id="status" role="status">Loading today's picture&hellip;</p>
-      <p id="notice" role="status" hidden></p>
+      <div id="notice" role="status" hidden>
+        <span id="notice-text"></span>
+        <span id="notice-actions" hidden>
+          <button id="notice-hint" type="button" class="primary"></button>
+          <button id="notice-dismiss" type="button">Not now</button>
+        </span>
+      </div>
     </main>
 
     <nav id="toolbar" aria-label="Piece controls">

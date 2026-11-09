@@ -633,7 +633,7 @@ test('a full board that does not match the picture says so instead of silently c
     await placeAlternateTiling(env, 5, 6);
     assert.equal(env.pento().won, false, 'not solved');
     assert.equal(env.el('notice').hidden, false, 'the player is told why');
-    assert.match(env.el('notice').textContent, /wrong spot/);
+    assert.match(env.el('notice-text').textContent, /wrong spot/);
 
     // Hint still helps: it points at a piece that is not where the picture wants it.
     env.el('btn-hint').fire('click');
@@ -658,7 +658,7 @@ test('on a full board the hint is drawn on top of the pieces and the hinted piec
     const hinted = env.pento().hintId;
     assert.ok(hinted >= 0, 'a piece is hinted');
     assert.equal(env.pento().selected, hinted, 'the hinted piece is selected so it glows');
-    assert.match(env.el('notice').textContent, /Hint: the glowing piece belongs in the dashed spot/);
+    assert.match(env.el('notice-text').textContent, /Hint: the glowing piece belongs in the dashed spot/);
     assert.equal(env.el('timer').textContent, '0:15', 'a hint still costs the 15 second penalty');
 
     await new Promise((r) => setTimeout(r, 30)); // let the frame draw
@@ -793,3 +793,89 @@ for (const mode of ['horizontal', 'vertical']) {
     }
   });
 }
+
+
+test('a full but wrong board highlights one wrong piece and offers a hint', async () => {
+  const env = makeEnv({ search: '?debug&seed=alt0' });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    await placeAlternateTiling(env, 5, 6);
+    assert.equal(env.pento().won, false);
+
+    // The notice asks, with buttons, and one of the wrong pieces is selected so it glows.
+    assert.equal(env.el('notice').hidden, false);
+    assert.equal(env.el('notice-actions').hidden, false, 'the hint / not now buttons are shown');
+    assert.match(env.el('notice-text').textContent, /glowing piece is one of them\. Want a hint\?/);
+    assert.match(env.el('notice-hint').textContent, /Show hint \(\+15s\)/);
+    const { pieces, states } = env.pento();
+    const glowing = env.pento().selected;
+    assert.ok(glowing >= 0, 'a piece is highlighted');
+    const wrong = Core.misplaced(pieces, states, null).map((p) => p.id);
+    assert.ok(wrong.includes(glowing), 'and it is one that really is wrong');
+
+    // Asking for the hint is free until accepted: nothing has been charged yet.
+    assert.equal(env.el('hints').hidden, true);
+    assert.equal(env.el('timer').textContent, '0:00');
+    assert.equal(env.pento().hintId, -1);
+
+    // Accepting shows where that very piece belongs, and charges the usual penalty.
+    env.el('notice-hint').fire('click');
+    assert.equal(env.pento().hintId, glowing, 'the hint is for the highlighted piece');
+    assert.equal(env.pento().selected, glowing);
+    assert.equal(env.el('timer').textContent, '0:15');
+    assert.equal(env.el('notice-actions').hidden, true, 'the question is gone');
+    assert.match(env.el('notice-text').textContent, /Hint: the glowing piece belongs in the dashed spot/);
+  } finally {
+    env.teardown();
+  }
+});
+
+test('"Not now" dismisses the offer and it does not come back until the board changes', async () => {
+  const env = makeEnv({ search: '?debug&seed=alt0' });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    await placeAlternateTiling(env, 5, 6);
+    assert.equal(env.el('notice-actions').hidden, false);
+
+    env.el('notice-dismiss').fire('click');
+    assert.equal(env.el('notice').hidden, true, 'dismissed');
+    assert.equal(env.el('timer').textContent, '0:00', 'and it cost nothing');
+
+    // Nudging a piece and putting it back leaves the board full and wrong: no new offer.
+    const { states, layout } = env.pento();
+    const { s, bx, by } = layout;
+    const st = states[0];
+    const x = bx + st.pivot[0] * s;
+    const y = by + st.pivot[1] * s;
+    const canvas = env.el('board');
+    canvas.fire('pointerdown', ptr(x, y));
+    canvas.fire('pointermove', ptr(x + 4, y + 4));
+    canvas.fire('pointermove', ptr(x + 1, y + 1));
+    canvas.fire('pointerup', ptr(x + 1, y + 1));
+    assert.equal(st.placed, true, 'the piece went back');
+    assert.equal(env.el('notice').hidden, true, 'not asked again');
+
+    // Taking a piece off the board (into the tray) and then filling the board again asks afresh.
+    canvas.fire('pointerdown', ptr(x, y));
+    canvas.fire('pointermove', ptr(x + 20, y + 20));
+    const belowBoard = by + layout.rows * s + 40;
+    canvas.fire('pointermove', ptr(x, belowBoard));
+    canvas.fire('pointerup', ptr(x, belowBoard));
+    assert.equal(st.placed, false, 'it went to the tray');
+    assert.equal(env.el('notice').hidden, true, 'no question while the board has a gap');
+
+    const slotX = bx + st.slot[0] * s;
+    const slotY = by + st.slot[1] * s;
+    canvas.fire('pointerdown', ptr(slotX, slotY));
+    canvas.fire('pointermove', ptr((slotX + x) / 2, (slotY + y) / 2));
+    canvas.fire('pointermove', ptr(x + 1, y + 1));
+    canvas.fire('pointerup', ptr(x + 1, y + 1));
+    assert.equal(st.placed, true, 'back on the board');
+    assert.equal(env.el('notice').hidden, false, 'asked again now that the board is full again');
+    assert.equal(env.el('notice-actions').hidden, false);
+  } finally {
+    env.teardown();
+  }
+});

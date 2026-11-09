@@ -501,7 +501,9 @@
   $('btn-rotate-cw').addEventListener('click', function () { transformPiece(selected, 'cw'); });
   $('btn-rotate-ccw').addEventListener('click', function () { transformPiece(selected, 'ccw'); });
   $('btn-flip').addEventListener('click', function () { transformPiece(selected, 'flip'); });
-  $('btn-hint').addEventListener('click', useHint);
+  $('btn-hint').addEventListener('click', function () { useHint(); });
+  $('notice-hint').addEventListener('click', function () { useHint(suggestedId); });
+  $('notice-dismiss').addEventListener('click', function () { askDismissed = true; showNotice(''); });
   $('btn-back').addEventListener('click', backToStart);
   $('btn-more').addEventListener('click', backToStart);
   $('btn-start-help').addEventListener('click', function () { helpDialog.showModal(); });
@@ -563,12 +565,16 @@
   }
 
   // ----------------------------------------------------------------------- hints
-  function useHint() {
+  function useHint(forId) {
     if (won || !pieces.length) return;
     var wrong = C.misplaced(pieces, states, getVisual());
     if (!wrong.length) return;
+    // `forId` is the piece the notice highlighted; otherwise the selected wrong piece, or any wrong one.
+    var named = typeof forId === 'number' && forId >= 0 ? pieces[forId] : null;
     var sel = selected >= 0 ? pieces[selected] : null;
-    var pick = sel && wrong.indexOf(sel) >= 0 ? sel : wrong[Math.floor(Math.random() * wrong.length)];
+    var pick = named && wrong.indexOf(named) >= 0 ? named
+      : sel && wrong.indexOf(sel) >= 0 ? sel
+      : wrong[Math.floor(Math.random() * wrong.length)];
     startClock();
     hints++;
     hintId = pick.id;
@@ -588,20 +594,40 @@
       finish(mode);
     } else if (C.boardFull(pieces, states)) {
       // Everything is on the board but the picture isn't right. On a plain picture that is
-      // hard to see, so say so rather than leaving the player wondering why nothing happened.
-      showNotice('Every piece is placed, but some are in the wrong spot. Tap Hint to find one.');
+      // hard to see, so say so, point at one wrong piece and offer a hint, rather than leaving
+      // the player wondering why nothing happened.
+      if (!askDismissed) askForHint();
     } else {
+      askDismissed = false;
       showNotice('');
     }
   }
 
+  var askDismissed = false; // the player said "not now": don't ask again until the board changes shape
+  var suggestedId = -1;
+  function askForHint() {
+    var wrong = C.misplaced(pieces, states, getVisual());
+    if (!wrong.length) return;
+    // Keep the piece the player has selected if it is one of the wrong ones, otherwise pick one.
+    var sel = selected >= 0 ? pieces[selected] : null;
+    var pick = sel && wrong.indexOf(sel) >= 0 ? sel : wrong[Math.floor(Math.random() * wrong.length)];
+    suggestedId = pick.id;
+    if (selected !== pick.id) select(pick.id); // the piece glows
+    $('notice-hint').textContent = 'Show hint (+' + C.HINT_PENALTY_SECONDS + 's)';
+    showNotice('Every piece is placed, but some are in the wrong spot. The glowing piece is one of them. Want a hint?', 0, true);
+  }
+
   var noticeTimer = 0;
-  function showNotice(text, ms) {
+  // A short message over the bottom of the board. With `ask` it stays until answered and shows
+  // the hint / not-now buttons; otherwise it fades after `ms`.
+  function showNotice(text, ms, ask) {
     var el = $('notice');
     clearTimeout(noticeTimer);
-    el.textContent = text;
+    $('notice-text').textContent = text;
+    $('notice-actions').hidden = !(text && ask);
+    el.className = text && ask ? 'asking' : '';
     el.hidden = !text;
-    if (text) noticeTimer = setTimeout(function () { el.hidden = true; }, ms || 6000);
+    if (text && !ask) noticeTimer = setTimeout(function () { el.hidden = true; }, ms || 6000);
   }
 
   function finish(mode) {
@@ -695,6 +721,8 @@
     });
     zOrder = pieces.map(function (p) { return p.id; });
     selected = -1;
+    askDismissed = false;
+    showNotice('');
     moves = 0;
     hints = 0;
     hintId = -1;
