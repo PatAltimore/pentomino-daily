@@ -11,16 +11,18 @@
  *   wikipedia   Wikipedia's Picture of the day from the day before <day>
  *   tetromino   a public-domain Art Institute of Chicago artwork chosen by <day>
  *   fixed       another Art Institute artwork (the no-rotation puzzle)
- *   commons     a Wikimedia Commons featured photograph chosen by <day> (a second no-rotation puzzle)
+ *   commons     a Wikimedia Commons featured photograph of an animal, chosen by <day> (the animal
+ *               photo puzzle, a second no-rotation puzzle)
  * The two "picture of the day" puzzles use the previous day's picture so that it already exists in
- * every time zone at local midnight. If the Art Institute or Commons is unreachable, tetromino, fixed
- * and commons fall back to older Wikipedia pictures.
+ * every time zone at local midnight. If the Art Institute is unreachable, tetromino and fixed fall back
+ * to older Wikipedia pictures. The animal photo never falls back to a non-animal picture: if Commons is
+ * unreachable that day is simply unavailable (earlier days stay, from the cache).
  *
  * The window is the UTC date's neighbours: from tomorrow (UTC) back BACK_DAYS days, which covers
  * every time zone's local "today" and leaves a week of earlier puzzles to play.
  *
  * Set IMAGE_SOURCE=apod (NASA only), wikimedia (Wikipedia only), artic (Art Institute only) or
- * commons (Commons featured photos only) to fetch just one source.
+ * commons (Commons animal photos only) to fetch just one source.
  *
  * Environment:
  *   NASA_API_KEY        free key from https://api.nasa.gov (falls back to the rate-limited DEMO_KEY)
@@ -133,9 +135,26 @@ export function pickArtic(json, { date, seed, skipIds = [] } = {}) {
 /**
  * Choose a featured photograph from a Wikimedia Commons query response (generator=search with
  * imageinfo). Only ordinary JPEG photos of a puzzle-friendly shape and size with a stated licence
- * are considered. The pick is deterministic for a given seed; `skipIds` avoids reusing a picture.
+ * are considered, and `accept` (if given) can rule pages out, for example by their categories. The pick is
+ * deterministic for a given seed; `skipIds` avoids reusing a picture.
  */
-export function pickCommons(json, { date, seed, skipIds = [] } = {}) {
+// Words that mark a Commons category as being about an animal, and words that mark it as being about
+// something else (art, models, specimens) that merely shows one.
+const ANIMAL_WORDS = /\b(animals?|fauna|birds?|mammals?|insects?|reptiles?|amphibians?|fish(?:es)?|arachnids?|spiders?|butterfl(?:y|ies)|moths?|beetles?|bees|wasps?|ants|dragonflies|damselflies|snakes?|lizards?|frogs?|toads?|turtles?|tortoises?|crocodil\w+|mammalia|aves|insecta|reptilia|amphibia|arthropods?|crustaceans?|molluscs?|mollusks?|primates?|monkeys?|apes?|bats|owls?|eagles?|hawks?|falcons?|ducks?|geese|swans?|herons?|parrots?|penguins?|whales?|dolphins?|seals?|sharks?|cats|dogs|horses|cattle|cows|sheep|goats|deer|bears|wolves|foxes|lions?|tigers?|elephants?|giraffes?|zebras?|rhinoceros\w*|hippopotam\w+|squirrels?|rabbits?|hares?|otters?|lemurs?)\b/i;
+const NOT_A_PHOTO = /\b(sculptures?|statues?|paintings?|drawings?|illustrations?|engravings?|stamps?|coins?|logos?|coats? of arms|heraldry|toys?|taxidermy|museums?|mascots?|cartoons?|comics?|emblems?|monuments?|mosaics?|tapestr\w+|lithographs?|posters?|fossils?|skeletons?|skulls?|specimens?)\b/i;
+
+/** The category names (without the "Category:" prefix) of a page from a prop=categories response. */
+export function categoryNames(page) {
+  return ((page && page.categories) || []).map((c) => String(c.title || '').replace(/^Category:/i, ''));
+}
+
+/** True when a page's own categories say it shows an animal (and it is not art or a specimen). */
+export function looksLikeAnimal(page) {
+  const names = categoryNames(page);
+  return names.some((n) => ANIMAL_WORDS.test(n)) && !names.some((n) => NOT_A_PHOTO.test(n));
+}
+
+export function pickCommons(json, { date, seed, skipIds = [], accept } = {}) {
   const raw = json && json.query && json.query.pages;
   const pages = Array.isArray(raw) ? raw : raw ? Object.values(raw) : [];
   const meta = (info, name) => stripHtml(info.extmetadata && info.extmetadata[name] && info.extmetadata[name].value).trim();
@@ -143,6 +162,7 @@ export function pickCommons(json, { date, seed, skipIds = [] } = {}) {
     .map((page) => ({ page, info: page && page.imageinfo && page.imageinfo[0] }))
     .filter(({ page, info }) => {
       if (!page || !info || skipIds.includes(page.pageid)) return false;
+      if (accept && !accept(page)) return false;
       if (info.mime !== 'image/jpeg') return false;
       if (!(info.width >= 1000 || info.height >= 1000) || Math.min(info.width, info.height) < 700) return false;
       const ratio = info.width / info.height;
@@ -320,6 +340,7 @@ function readEntry(day, key) {
   try {
     const info = JSON.parse(readFileSync(entryPath(day, key), 'utf8'));
     if (isPlaceholderTitle(info.title)) return null; // saved before placeholders were rejected: refetch
+    if (key === 'commons' && info.topic !== 'animals') return null; // saved before it was animals only: refetch
     return existsSync(path.join(SITE, info.image)) ? info : null;
   } catch {
     return null;
@@ -469,28 +490,96 @@ async function fetchNasaLibrary(day, skipIds = []) {
 }
 
 const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';
-// Featured photographs, minus the categories that are scans of artwork, maps and diagrams.
-const COMMONS_QUERY =
-  'filetype:bitmap incategory:"Featured pictures on Wikimedia Commons" ' +
+const COMMONS_EXCLUDE =
   '-incategory:"Featured pictures of artwork|Featured pictures of paintings|Featured maps|Featured pictures of maps|Featured pictures of illustrations|Featured pictures of drawings and watercolors"';
+// Every featured photograph (the base set), minus categories that are scans of artwork, maps and diagrams.
+const COMMONS_FEATURED_QUERY = `filetype:bitmap incategory:"Featured pictures on Wikimedia Commons" ${COMMONS_EXCLUDE}`;
+// Featured photographs filed under an animal category. Several likely names are listed; a name that
+// does not exist simply matches nothing.
+const COMMONS_ANIMAL_CATEGORIES = [
+  'Featured pictures of animals',
+  'Featured pictures of mammals',
+  'Featured pictures of birds',
+  'Featured pictures of insects',
+  'Featured pictures of reptiles',
+  'Featured pictures of amphibians',
+  'Featured pictures of fish',
+  'Featured pictures of arachnids',
+  'Featured pictures of arthropods',
+  'Featured pictures of molluscs',
+  'Featured pictures of crustaceans',
+  'Featured pictures of butterflies',
+  'Featured pictures of spiders',
+];
+const COMMONS_ANIMAL_QUERY = `filetype:bitmap incategory:"${COMMONS_ANIMAL_CATEGORIES.join('|')}" ${COMMONS_EXCLUDE}`;
 
-/** A featured photograph from Wikimedia Commons, chosen by day: the day picks a position in the results. */
-async function fetchCommons(day, skipIds) {
+const commonsTotals = new Map();
+
+/** How many Commons files match a search (cached for the run): the day picks a position among them. */
+async function commonsTotal(query, label) {
+  if (!commonsTotals.has(query)) {
+    const params = new URLSearchParams({
+      action: 'query', format: 'json', formatversion: '2', list: 'search',
+      srsearch: query, srnamespace: '6', srlimit: '1', srinfo: 'totalhits', srprop: '',
+    });
+    const json = await fetchJsonRetry(`${COMMONS_API}?${params}`);
+    const total = Number(json && json.query && json.query.searchinfo && json.query.searchinfo.totalhits) || 0;
+    console.log(`  Commons ${label}: ${total} pictures`);
+    commonsTotals.set(query, total);
+  }
+  return commonsTotals.get(query);
+}
+
+/** 20 Commons files from a position in a search, with their image info (and categories if asked). */
+async function commonsWindow(query, offset, withCategories) {
   const params = new URLSearchParams({
     action: 'query',
     format: 'json',
     formatversion: '2',
     generator: 'search',
-    gsrsearch: COMMONS_QUERY,
+    gsrsearch: query,
     gsrnamespace: '6',
     gsrlimit: '20',
-    gsroffset: String(hashSeed('commons:' + day) % 3000),
-    prop: 'imageinfo',
+    gsroffset: String(offset),
+    prop: withCategories ? 'imageinfo|categories' : 'imageinfo',
     iiprop: 'url|size|mime|extmetadata',
     iiurlwidth: '1280',
     iiextmetadatafilter: 'Artist|LicenseShortName|ImageDescription|ObjectName',
   });
-  return pickCommons(await fetchJsonRetry(`${COMMONS_API}?${params}`), { date: day, seed: day + ':commons', skipIds });
+  if (withCategories) params.set('cllimit', 'max');
+  return fetchJsonRetry(`${COMMONS_API}?${params}`);
+}
+
+/** A position for the day that leaves room for a full window of 20 (and stays within the search's reach). */
+function commonsOffset(day, total, salt) {
+  const span = Math.max(1, Math.min(total, 9000) - 19);
+  return hashSeed(salt + day) % span;
+}
+
+/**
+ * An animal photograph from Wikimedia Commons' featured pictures, chosen by day. First choice: pictures
+ * filed under an animal category of the featured pictures. If those category names match nothing,
+ * look through all featured pictures and keep those whose own categories say animal. Never a
+ * non-animal picture: if neither finds one, there is no picture that day.
+ */
+async function fetchCommons(day, skipIds) {
+  const seed = day + ':commons';
+  const animals = await commonsTotal(COMMONS_ANIMAL_QUERY, 'featured animal pictures (by category)');
+  if (animals > 0) {
+    const json = await commonsWindow(COMMONS_ANIMAL_QUERY, commonsOffset(day, animals, 'animals:'), false);
+    const pick = pickCommons(json, { date: day, seed, skipIds });
+    if (pick) return { ...pick, topic: 'animals' };
+  }
+  const all = await commonsTotal(COMMONS_FEATURED_QUERY, 'featured pictures (all)');
+  if (!all) return null;
+  const base = commonsOffset(day, all, 'all:');
+  for (let k = 0; k < 6; k++) { // animals are a fraction of the featured pictures: look at a few windows
+    const offset = Math.min(base + k * 20, 9980);
+    const json = await commonsWindow(COMMONS_FEATURED_QUERY, offset, true);
+    const pick = pickCommons(json, { date: day, seed, skipIds, accept: looksLikeAnimal });
+    if (pick) return { ...pick, topic: 'animals' };
+  }
+  return null;
 }
 
 /** APOD for one date. A 4xx (e.g. a date NASA has not published yet) means "no picture", not an outage. */
@@ -528,8 +617,8 @@ async function main() {
     } else if (key === 'wikipedia') {
       if (want('wikimedia')) chain.push({ name: 'Wikipedia Picture of the day', run: () => fetchWikipedia(before(1)) });
     } else if (key === 'commons') {
+      // No fallback to another kind of picture: it is the animal photo or nothing for that day.
       if (want('commons')) chain.push({ name: 'Wikimedia Commons featured picture', run: () => fetchCommons(day, usedItemIds(days, ['commons'], day, key)) });
-      if (want('wikimedia')) chain.push({ name: 'Wikipedia Picture of the day (4 days back)', fallback: true, run: () => fetchWikipedia(before(4)) });
     } else {
       if (want('artic')) chain.push({ name: 'Art Institute of Chicago', run: () => fetchArtic(day, key, usedItemIds(days, ['tetromino', 'fixed'], day, key)) });
       if (want('wikimedia')) {
@@ -556,7 +645,7 @@ async function main() {
             console.log('  Skipped: no usable picture (video, copyrighted or missing).');
             continue;
           }
-          const extra = { ...(c.fallback ? { fallback: true } : {}), ...(pick.id ? { itemId: pick.id } : {}) };
+          const extra = { ...(c.fallback ? { fallback: true } : {}), ...(pick.id ? { itemId: pick.id } : {}), ...(pick.topic ? { topic: pick.topic } : {}) };
           const downloaded = await download(pick.imageUrls);
           const sha256 = createHash('sha256').update(downloaded.buf).digest('hex');
           const dup = sameImageElsewhere(days, key, day, sha256);
