@@ -858,11 +858,14 @@ test('"Not now" dismisses the offer and it does not come back until the board ch
     assert.equal(env.el('timer').textContent, '0:00', 'and it cost nothing');
 
     // Nudging a piece and putting it back leaves the board full and wrong: no new offer.
-    const { states, layout } = env.pento();
+    // (Grab a cell that really belongs to the piece: a piece's centre can sit on a neighbour.)
+    const { pieces, states, layout } = env.pento();
     const { s, bx, by } = layout;
     const st = states[0];
-    const x = bx + st.pivot[0] * s;
-    const y = by + st.pivot[1] * s;
+    const home = st.pivot.slice();
+    const cell = Core.cellsAt(pieces[0], st.r, st.f, st.g0)[0];
+    const x = bx + (cell[0] + 0.5) * s;
+    const y = by + (cell[1] + 0.5) * s;
     const canvas = env.el('board');
     canvas.fire('pointerdown', ptr(x, y));
     canvas.fire('pointermove', ptr(x + 4, y + 4));
@@ -882,10 +885,11 @@ test('"Not now" dismisses the offer and it does not come back until the board ch
 
     const slotX = bx + st.slot[0] * s;
     const slotY = by + st.slot[1] * s;
+    const [homeX, homeY] = [bx + home[0] * s, by + home[1] * s];
     canvas.fire('pointerdown', ptr(slotX, slotY));
-    canvas.fire('pointermove', ptr((slotX + x) / 2, (slotY + y) / 2));
-    canvas.fire('pointermove', ptr(x + 1, y + 1));
-    canvas.fire('pointerup', ptr(x + 1, y + 1));
+    canvas.fire('pointermove', ptr((slotX + homeX) / 2, (slotY + homeY) / 2));
+    canvas.fire('pointermove', ptr(homeX + 1, homeY + 1));
+    canvas.fire('pointerup', ptr(homeX + 1, homeY + 1));
     assert.equal(st.placed, true, 'back on the board');
     assert.equal(env.el('notice').hidden, false, 'asked again now that the board is full again');
     assert.equal(env.el('notice-actions').hidden, false);
