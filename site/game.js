@@ -294,15 +294,21 @@
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     ctx.stroke();
     if (assistOn && !won && st.ok && st.placed && !st.dragging) {
-      // Right spot, right way round: a green border that pops (thick, glowing) and settles.
-      var k2 = Math.min(1, Math.max(0, (Date.now() - st.glowAt) / GLOW_MS));
-      var base = Math.max(2.5, cs * 0.06);
-      ctx.lineWidth = base * (1 + 1.4 * (1 - k2));
-      ctx.strokeStyle = GREEN;
-      ctx.shadowColor = GREEN;
-      ctx.shadowBlur = 22 * (1 - k2);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+      // Right spot, right way round: a green border that pops (thick, glowing) and fades away.
+      // Once the animation has finished the border is gone; the piece is simply in place.
+      var age = Date.now() - st.glowAt;
+      if (age < GLOW_MS) {
+        var k2 = Math.min(1, Math.max(0, age / GLOW_MS));
+        var base = Math.max(2.5, cs * 0.06);
+        ctx.globalAlpha = 1 - k2 * k2; // fade out as it settles, so it does not cut off abruptly
+        ctx.lineWidth = base * (1 + 1.4 * (1 - k2));
+        ctx.strokeStyle = GREEN;
+        ctx.shadowColor = GREEN;
+        ctx.shadowBlur = 22 * (1 - k2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
     }
     ctx.restore();
   }

@@ -1142,6 +1142,13 @@ test('the green border animates when a piece becomes correct, and only for corre
     assert.ok(env.calls.filter((c) => c === 'clearRect').length <= 1, 'the animation loop has ended');
     await frame();
     assert.ok(env.pento().states[0].ok, 'a piece placed correctly is still flagged right');
+
+    // Once the animation is over the green border is gone: a fresh redraw shows none.
+    env.calls.length = 0;
+    tap(canvas, 1, 1); // a tap on empty space forces a redraw
+    await frame();
+    assert.ok(env.calls.includes('clearRect'), 'the canvas was redrawn');
+    assert.ok(!env.calls.includes('strokeStyle=' + GREEN), 'and no green border is left on the correct pieces');
   } finally {
     env.teardown();
   }
