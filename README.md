@@ -10,7 +10,7 @@ It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it h
   - **Tetromino puzzle**: 4-cell pieces on a 4x6 board (6 pieces). A public-domain artwork from the Art Institute of Chicago.
   - **NASA picture**: pentominoes on a 5x6 board. NASA's Astronomy Picture of the Day, or a picture from the NASA Image and Video Library when that isn't available.
   - **Wikipedia picture**: pentominoes on a 5x6 board, using Wikipedia's Picture of the day.
-  - **Fixed pieces**: 8 pentominoes on a 5x8 board that can't be rotated or flipped. They start upright, so the work is finding where each belongs. A second Art Institute artwork.
+  - **Art photo**: 8 pentominoes on a 5x8 board that can't be rotated or flipped. They start upright, so the work is finding where each belongs. A second Art Institute artwork.
   - **Animal photo**: the same no-turning rules, with a photograph of an animal. A Wikimedia Commons featured animal picture chosen by the date (by their animal categories; if those names don't match, from all featured pictures whose own categories say animal, leaving out sculptures, paintings and museum specimens). It is never a non-animal picture: if Commons can't be reached that day has no animal photo, and earlier days stay from the saved copies. The photographer and licence (often CC BY-SA) are shown in the result.
 
   The start page lists the two fixed-orientation puzzles first. Each card says what the picture is (artwork, space photo, picture of the day, photograph), how many pieces it has, and whether the pieces are "fixed orientation" (can't be turned) or "rotate & flip". (Landscape pictures swap the board's width and height.)

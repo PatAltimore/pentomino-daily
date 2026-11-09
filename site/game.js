@@ -38,7 +38,7 @@
   // pictures swap them) and whether pieces may be rotated and flipped.
   // The order here is the order on the start page: the fixed-orientation puzzles first.
   var PUZZLES = {
-    fixed: { name: 'Fixed pieces', icon: '📌', category: 'Artwork', set: 'pentomino', grid: [5, 8], fixed: true },
+    fixed: { name: 'Art photo', icon: '🖼️', category: 'Artwork', set: 'pentomino', grid: [5, 8], fixed: true },
     commons: { name: 'Animal photo', icon: '🐾', category: 'Photograph', set: 'pentomino', grid: [5, 8], fixed: true },
     tetromino: { name: 'Tetromino puzzle', icon: '🟪', iconShape: 'T', category: 'Artwork', set: 'tetromino', grid: [4, 6], fixed: false },
     nasa: { name: 'NASA picture', icon: '🚀', category: 'Space photo', set: 'pentomino', grid: [5, 6], fixed: false },

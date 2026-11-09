@@ -1269,7 +1269,7 @@ test('each start-page card describes its picture category, piece count and orien
     const list = env.el('puzzle-list');
     const names = findByClass(list, 'name').map((n) => n.textContent);
     const subs = findByClass(list, 'sub').map((n) => n.textContent.replace(/\u00a0/g, ' '));
-    assert.deepEqual(names, ['Fixed pieces', 'Animal photo', 'Tetromino puzzle', 'NASA picture', 'Wikipedia picture']);
+    assert.deepEqual(names, ['Art photo', 'Animal photo', 'Tetromino puzzle', 'NASA picture', 'Wikipedia picture']);
     assert.deepEqual(subs, [
       'Artwork · 8 pieces · fixed orientation',
       'Photograph · 8 pieces · fixed orientation',
@@ -1278,6 +1278,37 @@ test('each start-page card describes its picture category, piece count and orien
       'Picture of the day · 6 pieces · rotate & flip',
     ]);
     assert.ok(subs.every((t) => !/easy|medium|challenge/i.test(t)), 'no difficulty labels');
+  } finally {
+    env.teardown();
+  }
+});
+
+
+test('the art photo puzzle is called Art photo in its header and in shared results', async () => {
+  const today = localToday();
+  const files = publish({ [today]: ALL_KEYS });
+  const env = makeEnv({ hash: '#fixed', files });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    assert.match(env.el('puzzle-date').textContent, /^Art photo/);
+    env.el('help').open = false;
+    for (let i = 0; i < env.pento().pieces.length; i++) {
+      const { pieces, states, layout } = env.pento();
+      const { s, bx, by } = layout;
+      const st = states[i];
+      const [sx, sy] = [bx + st.slot[0] * s, by + st.slot[1] * s];
+      const [tx, ty] = [bx + Core.pivotForGrid(pieces[i], 0, false, pieces[i].home[0])[0] * s, by + Core.pivotForGrid(pieces[i], 0, false, pieces[i].home[0])[1] * s];
+      const canvas = env.el('board');
+      canvas.fire('pointerdown', ptr(sx, sy));
+      canvas.fire('pointermove', ptr((sx + tx) / 2, (sy + ty) / 2));
+      canvas.fire('pointermove', ptr(tx + 1, ty - 1));
+      canvas.fire('pointerup', ptr(tx + 1, ty - 1));
+    }
+    await until(() => env.el('win').open, 4000);
+    env.el('btn-share').fire('click');
+    await until(() => env.clipboard.text);
+    assert.match(env.clipboard.text, /Pentomino Daily · Art photo ·/);
+    assert.doesNotMatch(env.clipboard.text, /Fixed pieces/);
   } finally {
     env.teardown();
   }
