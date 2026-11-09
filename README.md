@@ -1,19 +1,19 @@
 # Pentomino Daily
 
-Five daily jigsaws at different levels. A start page lets you pick one; each is a picture of the day cut into **pentomino or tetromino pieces**. Drag, rotate and flip the pieces to rebuild it. Everyone gets the same five puzzles each day, and there is a Wordle-style share button.
+Five daily jigsaws. A start page lets you pick one; each is a picture of the day cut into **pentomino or tetromino pieces**. Drag, rotate and flip the pieces to rebuild it. Everyone gets the same five puzzles each day, and there is a Wordle-style share button.
 
 It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it hosts for free on GitHub Pages.
 
 ## How it works
 
 - **Five puzzles a day, for your local day.** Each has its own picture and its own saved result:
-  - **Easy, Tetromino puzzle**: 4-cell pieces on a 4x6 board (6 pieces). A public-domain artwork from the Art Institute of Chicago.
-  - **Medium, NASA picture**: pentominoes on a 5x6 board. NASA's Astronomy Picture of the Day, or a picture from the NASA Image and Video Library when that isn't available.
-  - **Medium, Wikipedia picture**: pentominoes on a 5x6 board, using Wikipedia's Picture of the day.
-  - **Challenge, Fixed pieces**: 8 pentominoes on a 5x8 board that can't be rotated or flipped. They start upright, so the work is finding where each belongs. A second Art Institute artwork.
-  - **Challenge, Fixed photo**: the same no-turning rules, with a photograph. A Wikimedia Commons featured picture chosen by the date; the photographer and licence (often CC BY-SA) are shown in the result.
+  - **Tetromino puzzle**: 4-cell pieces on a 4x6 board (6 pieces). A public-domain artwork from the Art Institute of Chicago.
+  - **NASA picture**: pentominoes on a 5x6 board. NASA's Astronomy Picture of the Day, or a picture from the NASA Image and Video Library when that isn't available.
+  - **Wikipedia picture**: pentominoes on a 5x6 board, using Wikipedia's Picture of the day.
+  - **Fixed pieces**: 8 pentominoes on a 5x8 board that can't be rotated or flipped. They start upright, so the work is finding where each belongs. A second Art Institute artwork.
+  - **Fixed photo**: the same no-turning rules, with a photograph. A Wikimedia Commons featured picture chosen by the date; the photographer and licence (often CC BY-SA) are shown in the result.
 
-  (Landscape pictures swap the board's width and height.)
+  Each start-page card says what the picture is (artwork, space photo, picture of the day, photograph), how many pieces it has, and whether the pieces are "fixed orientation" (can't be turned) or "rotate & flip". (Landscape pictures swap the board's width and height.)
 - **Local days and earlier puzzles.** The deploy publishes a week of puzzle days, not just one, plus a `manifest.json` listing them. The browser uses the player's local date to choose "today", so the puzzles change at local midnight and everyone in a time zone gets the same ones. The start page has arrows to open any earlier day (days in the player's future are hidden). Earlier days are saved and shareable but don't count toward the streak or best time.
   - The artwork puzzles are picked by date from the Art Institute's public-domain (CC0) works, so any day can be generated, including tomorrow in UTC (needed for time zones ahead of UTC).
   - The two picture-of-the-day puzzles show the *previous* day's picture. Today's picture isn't published yet in every time zone at local midnight, but yesterday's always is.

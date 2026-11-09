@@ -521,6 +521,19 @@
     return { day: '', key: h };
   }
 
+  /** How many pieces a puzzle is cut into: board cells divided by the piece size. */
+  function pieceCount(cfg) {
+    return (cfg.grid[0] * cfg.grid[1]) / (cfg.set === 'tetromino' ? 4 : 5);
+  }
+
+  /** A card's one-line description: picture category, number of pieces, and whether they can turn. */
+  function puzzleSummary(cfg) {
+    const n = pieceCount(cfg);
+    // Non-breaking spaces keep each phrase together, so a long line wraps between the dots.
+    const nb = (text) => text.replace(/ /g, '\u00a0');
+    return [nb(cfg.category), nb(n + (n === 1 ? ' piece' : ' pieces')), nb(cfg.fixed ? 'fixed orientation' : 'rotate & flip')].join(' · ');
+  }
+
   function formatTime(seconds) {
     const s = Math.max(0, Math.round(seconds));
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
@@ -658,6 +671,8 @@
     dayNumber,
     pickDay,
     dayLabel,
+    pieceCount,
+    puzzleSummary,
     parseRoute,
     formatTime,
     formatDateShort,

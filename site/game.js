@@ -37,13 +37,13 @@
   // Each puzzle: which piece set it is cut from, board size ([portrait cols, rows]; landscape
   // pictures swap them) and whether pieces may be rotated and flipped.
   var PUZZLES = {
-    tetromino: { name: 'Tetromino puzzle', icon: '🟪', iconShape: 'T', level: 'Easy', blurb: 'Artwork, 6 pieces of 4 cells', set: 'tetromino', grid: [4, 6], fixed: false },
-    nasa: { name: 'NASA picture', icon: '🚀', level: 'Medium', blurb: 'A picture from NASA', set: 'pentomino', grid: [5, 6], fixed: false },
-    wikipedia: { name: 'Wikipedia picture', icon: '📖', level: 'Medium', blurb: 'Wikipedia\'s picture of the day', set: 'pentomino', grid: [5, 6], fixed: false },
-    fixed: { name: 'Fixed pieces', icon: '📌', level: 'Challenge', blurb: 'Artwork, 8 pieces, no turning', set: 'pentomino', grid: [5, 8], fixed: true },
-    commons: { name: 'Fixed photo', icon: '📷', level: 'Challenge', blurb: 'Photograph, 8 pieces, no turning', set: 'pentomino', grid: [5, 8], fixed: true },
+    tetromino: { name: 'Tetromino puzzle', icon: '🟪', iconShape: 'T', category: 'Artwork', set: 'tetromino', grid: [4, 6], fixed: false },
+    nasa: { name: 'NASA picture', icon: '🚀', category: 'Space photo', set: 'pentomino', grid: [5, 6], fixed: false },
+    wikipedia: { name: 'Wikipedia picture', icon: '📖', category: 'Picture of the day', set: 'pentomino', grid: [5, 6], fixed: false },
+    fixed: { name: 'Fixed pieces', icon: '📌', category: 'Artwork', set: 'pentomino', grid: [5, 8], fixed: true },
+    commons: { name: 'Fixed photo', icon: '📷', category: 'Photograph', set: 'pentomino', grid: [5, 8], fixed: true },
   };
-  var SAMPLE = { name: 'Sample picture', icon: '🌙', level: '', blurb: 'Placeholder until real pictures are fetched', file: 'data/sample.json', set: 'pentomino', grid: [5, 6], fixed: false };
+  var SAMPLE = { name: 'Sample picture', icon: '🌙', category: 'Illustration', file: 'data/sample.json', set: 'pentomino', grid: [5, 6], fixed: false };
   var route = C.parseRoute(location.hash);
   var puzzleKey = route.key;
   var puzzleCfg = PUZZLES[puzzleKey] || SAMPLE;
@@ -958,7 +958,7 @@
       name.textContent = it.meta.name;
       var sub = document.createElement('span');
       sub.className = 'sub';
-      sub.textContent = (it.meta.level ? it.meta.level + ' · ' : '') + it.meta.blurb;
+      sub.textContent = C.puzzleSummary(it.meta);
       info.append(name, sub);
       var badge = document.createElement('span');
       badge.className = 'badge';

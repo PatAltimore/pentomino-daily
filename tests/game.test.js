@@ -58,7 +58,10 @@ function makeEnv({ search = '?debug', hash = '#sample', storage = new Map(), ima
       showModal() {
         this.open = true;
       },
-      append() {},
+      children: [],
+      append(...nodes) {
+        this.children.push(...nodes);
+      },
     };
   }
   const el = (id) => (els[id] = els[id] || makeEl(id));
@@ -1229,6 +1232,38 @@ test('the A key toggles assist', async () => {
     assert.equal(env.el('assist').checked, true);
     press('A');
     assert.equal(env.el('assist').checked, false);
+  } finally {
+    env.teardown();
+  }
+});
+
+
+// All descendants of a fake element that have the given class name.
+function findByClass(node, className, out = []) {
+  for (const child of node.children || []) {
+    if (child && child.className === className) out.push(child);
+    findByClass(child, className, out);
+  }
+  return out;
+}
+
+test('each start-page card describes its picture category, piece count and orientation', async () => {
+  const today = localToday();
+  const env = makeEnv({ hash: '', files: publish({ [today]: ALL_KEYS }) });
+  try {
+    await until(() => env.el('start-progress').textContent);
+    const list = env.el('puzzle-list');
+    const names = findByClass(list, 'name').map((n) => n.textContent);
+    const subs = findByClass(list, 'sub').map((n) => n.textContent.replace(/\u00a0/g, ' '));
+    assert.deepEqual(names, ['Tetromino puzzle', 'NASA picture', 'Wikipedia picture', 'Fixed pieces', 'Fixed photo']);
+    assert.deepEqual(subs, [
+      'Artwork · 6 pieces · rotate & flip',
+      'Space photo · 6 pieces · rotate & flip',
+      'Picture of the day · 6 pieces · rotate & flip',
+      'Artwork · 8 pieces · fixed orientation',
+      'Photograph · 8 pieces · fixed orientation',
+    ]);
+    assert.ok(subs.every((t) => !/easy|medium|challenge/i.test(t)), 'no difficulty labels');
   } finally {
     env.teardown();
   }

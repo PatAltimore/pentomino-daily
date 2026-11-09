@@ -185,6 +185,19 @@ test('pickDay chooses the newest published day that is not in the player\'s futu
   assert.equal(C.pickDay([], '2026-11-08'), null);
 });
 
+test('puzzleSummary gives the category, number of pieces and orientation rule', () => {
+  assert.equal(C.pieceCount({ grid: [5, 6], set: 'pentomino' }), 6);
+  assert.equal(C.pieceCount({ grid: [4, 6], set: 'tetromino' }), 6);
+  assert.equal(C.pieceCount({ grid: [5, 8], set: 'pentomino' }), 8);
+  const plain = (cfg) => C.puzzleSummary(cfg).replace(/\u00a0/g, ' ');
+  assert.equal(plain({ category: 'Artwork', grid: [4, 6], set: 'tetromino', fixed: false }), 'Artwork · 6 pieces · rotate & flip');
+  assert.equal(plain({ category: 'Photograph', grid: [5, 8], set: 'pentomino', fixed: true }), 'Photograph · 8 pieces · fixed orientation');
+  assert.equal(plain({ category: 'X', grid: [1, 5], set: 'pentomino', fixed: false }), 'X · 1 piece · rotate & flip');
+  // Each phrase is unbreakable; the only ordinary spaces are around the dots.
+  const raw = C.puzzleSummary({ category: 'Picture of the day', grid: [5, 6], set: 'pentomino', fixed: false });
+  assert.deepEqual(raw.split(' · ').map((p) => /\s/.test(p.replace(/\u00a0/g, ''))), [false, false, false]);
+});
+
 test('dayLabel and parseRoute', () => {
   assert.equal(C.dayLabel('2026-11-08', '2026-11-08'), 'Today');
   assert.equal(C.dayLabel('2026-11-07', '2026-11-08'), 'Yesterday');
