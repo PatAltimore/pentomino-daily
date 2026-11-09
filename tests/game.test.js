@@ -861,9 +861,12 @@ test('"Not now" dismisses the offer and it does not come back until the board ch
     // (Grab a cell that really belongs to the piece: a piece's centre can sit on a neighbour.)
     const { pieces, states, layout } = env.pento();
     const { s, bx, by } = layout;
-    const st = states[0];
+    // Always use the highlighted (selected) piece: that is the case where a tap would rotate it.
+    const id = env.pento().selected;
+    assert.ok(id >= 0, 'a piece is highlighted');
+    const st = states[id];
     const home = st.pivot.slice();
-    const cell = Core.cellsAt(pieces[0], st.r, st.f, st.g0)[0];
+    const cell = Core.cellsAt(pieces[id], st.r, st.f, st.g0)[0];
     const x = bx + (cell[0] + 0.5) * s;
     const y = by + (cell[1] + 0.5) * s;
     const canvas = env.el('board');
