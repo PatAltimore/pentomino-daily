@@ -178,3 +178,5 @@ dialog p { margin: 0; }
 #notice-actions[hidden] { display: none; }
 #notice-actions button { padding: 8px 14px; }
 #notice[hidden] { display: none; }
+
+dialog .score { font-size: 1.6rem; font-weight: 800; color: var(--accent); }

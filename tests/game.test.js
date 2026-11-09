@@ -212,7 +212,7 @@ test('plays through a whole puzzle, then remembers it was solved', async () => {
 
     env.el('btn-hint').fire('click');
     assert.equal(env.el('hints').hidden, false);
-    assert.equal(env.el('timer').textContent, '0:15', 'a hint adds the 15 second penalty');
+    assert.equal(env.el('timer').textContent, '0:00', 'a hint no longer changes the time');
 
     await solveByDragging(env);
     await until(() => env.el('win').open, 4000);
@@ -223,7 +223,13 @@ test('plays through a whole puzzle, then remembers it was solved', async () => {
     assert.equal(done.hints, 1);
     assert.equal(done.mirrored, undefined, 'a normal solve carries no mirrored note');
     assert.ok(done.moves >= 12, 'moves counted: ' + done.moves);
-    assert.ok(done.seconds >= 15);
+    assert.ok(done.seconds < 15, 'the time is the real time: hints add no seconds');
+    assert.equal(typeof done.score, 'number');
+    assert.ok(done.score > 0 && done.score <= 1000 - 100, 'the hint cost 100 points: ' + done.score);
+    assert.equal(done.lost.hints, 100);
+    assert.ok(done.turns > 0 && done.turns < done.moves, 'turns are counted separately from moves');
+    assert.match(env.el('win-score').textContent, new RegExp('🏆 ' + done.score + ' points'));
+    assert.match(env.el('win-breakdown').textContent, /− 100 hints/);
     const stats = JSON.parse(storage.get('pd:stats'));
     assert.equal(stats.streak, 1);
     assert.equal(stats.played, 1);
@@ -232,6 +238,7 @@ test('plays through a whole puzzle, then remembers it was solved', async () => {
     env.el('btn-share').fire('click');
     await until(() => env.clipboard.text);
     assert.match(env.clipboard.text, /^🧩 Pentomino Daily/);
+    assert.match(env.clipboard.text, /\n🏆 \d+ · ⏱ /, 'the score leads the result line');
     env.teardown();
 
     // Come back later the same day: the solved board and the result dialog are restored.
@@ -659,7 +666,7 @@ test('on a full board the hint is drawn on top of the pieces and the hinted piec
     assert.ok(hinted >= 0, 'a piece is hinted');
     assert.equal(env.pento().selected, hinted, 'the hinted piece is selected so it glows');
     assert.match(env.el('notice-text').textContent, /Hint: the glowing piece belongs in the dashed spot/);
-    assert.equal(env.el('timer').textContent, '0:15', 'a hint still costs the 15 second penalty');
+    assert.equal(env.el('timer').textContent, '0:00', 'a hint no longer adds seconds');
 
     await new Promise((r) => setTimeout(r, 30)); // let the frame draw
     const frame = env.calls.slice(env.calls.lastIndexOf('clearRect'));
@@ -807,7 +814,7 @@ test('a full but wrong board highlights one wrong piece and offers a hint', asyn
     assert.equal(env.el('notice').hidden, false);
     assert.equal(env.el('notice-actions').hidden, false, 'the hint / not now buttons are shown');
     assert.match(env.el('notice-text').textContent, /glowing piece is one of them\. Want a hint\?/);
-    assert.match(env.el('notice-hint').textContent, /Show hint \(\+15s\)/);
+    assert.match(env.el('notice-hint').textContent, /Show hint \(−100 points\)/);
     const { pieces, states } = env.pento();
     const glowing = env.pento().selected;
     assert.ok(glowing >= 0, 'a piece is highlighted');
@@ -819,11 +826,11 @@ test('a full but wrong board highlights one wrong piece and offers a hint', asyn
     assert.equal(env.el('timer').textContent, '0:00');
     assert.equal(env.pento().hintId, -1);
 
-    // Accepting shows where that very piece belongs, and charges the usual penalty.
+    // Accepting shows where that very piece belongs, and costs 100 points (never any time).
     env.el('notice-hint').fire('click');
     assert.equal(env.pento().hintId, glowing, 'the hint is for the highlighted piece');
     assert.equal(env.pento().selected, glowing);
-    assert.equal(env.el('timer').textContent, '0:15');
+    assert.equal(env.el('timer').textContent, '0:00', 'the hint costs points, not time');
     assert.equal(env.el('notice-actions').hidden, true, 'the question is gone');
     assert.match(env.el('notice-text').textContent, /Hint: the glowing piece belongs in the dashed spot/);
   } finally {
@@ -901,5 +908,60 @@ test('the fixed photo puzzle is a second no-rotation puzzle with its own pieces'
   } finally {
     a.teardown();
     b.teardown();
+  }
+});
+
+
+test('the start page shows each solved puzzle\'s score and the day\'s total', async () => {
+  const today = localToday();
+  const storage = new Map([
+    ['pd:done:nasa:' + today, JSON.stringify({ seconds: 125, moves: 20, turns: 8, hints: 0, score: 940 })],
+    ['pd:done:fixed:' + today, JSON.stringify({ seconds: 300, moves: 30, turns: 0, hints: 1, score: 710 })],
+    ['pd:done:tetromino:' + today, JSON.stringify({ seconds: 90, moves: 12, hints: 0 })], // saved before scores existed
+  ]);
+  const env = makeEnv({ hash: '', storage, files: publish({ [today]: ALL_KEYS }) });
+  try {
+    await until(() => env.el('start-progress').textContent);
+    assert.equal(env.el('start-progress').textContent, '3 of 5 solved today · 🏆 1650 points');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('an older saved result without a score still opens, with no score shown', async () => {
+  const today = localToday();
+  const storage = new Map([['pd:done:nasa:' + today, JSON.stringify({ seconds: 125, moves: 20, hints: 2 })]]);
+  const env = makeEnv({ hash: '#nasa', storage, files: publish({ [today]: ALL_KEYS }) });
+  try {
+    await until(() => env.el('win').open, 3000);
+    assert.equal(env.el('win-score').hidden, true);
+    assert.equal(env.el('win-breakdown').hidden, true);
+    assert.match(env.el('win-stats').textContent, /⏱ 2:05/);
+    assert.equal(env.el('timer').textContent, '2:05', 'the clock shows the saved time, with no hint seconds taken off');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('turns are counted for the score and a restart resets them', async () => {
+  const storage = new Map();
+  const env = makeEnv({ storage });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    const key = [...storage.keys()].find((k) => k.startsWith('pd:done:'));
+    const first = JSON.parse(storage.get(key));
+    assert.ok(first.turns > 0);
+    // Playing the same puzzle again in practice mode does not change the saved score.
+    env.el('win').open = false;
+    env.el('btn-restart').fire('click');
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    assert.equal(storage.get(key), JSON.stringify(first), 'the saved score is untouched by a practice run');
+    assert.match(env.el('win-score').textContent, /🏆 \d+ points/, 'but the practice run is still scored');
+  } finally {
+    env.teardown();
   }
 });

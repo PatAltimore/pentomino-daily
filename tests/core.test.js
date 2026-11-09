@@ -196,6 +196,55 @@ test('dayLabel and parseRoute', () => {
   assert.deepEqual(C.parseRoute('#2026-11-07/fixed'), { day: '2026-11-07', key: 'fixed' });
 });
 
+test('minTurns is the fewest rotate / flip presses to get a piece upright', () => {
+  const want = { '0': 0, '1': 1, '2': 2, '3': 1, '0f': 1, '1f': 2, '2f': 3, '3f': 2 };
+  for (const [k, n] of Object.entries(want)) {
+    const r = Number(k[0]);
+    const f = k.endsWith('f');
+    assert.equal(C.minTurns(r, f), n, 'orientation ' + k);
+  }
+});
+
+test('score: a clean quick run is 1000 and time, hints and extra moves each cost points', () => {
+  const base = { seconds: 40, pieces: 6, placements: 6, turns: 5, parTurns: 5, hints: 0 };
+  assert.deepEqual(C.computeScore(base), { score: 1000, time: 0, hints: 0, moves: 0 });
+
+  // Time: free for 10 s per piece (60 s here), then 1.5 points per second, capped at 450.
+  assert.equal(C.computeScore({ ...base, seconds: 60 }).time, 0);
+  assert.equal(C.computeScore({ ...base, seconds: 120 }).time, 90);
+  assert.equal(C.computeScore({ ...base, seconds: 99999 }).time, 450);
+  assert.ok(C.computeScore({ ...base, seconds: 120, pieces: 8 }).time < 90, 'more pieces, more free time');
+
+  // Hints: 100 each, capped at 400.
+  assert.equal(C.computeScore({ ...base, hints: 1 }).hints, 100);
+  assert.equal(C.computeScore({ ...base, hints: 3 }).score, 700);
+  assert.equal(C.computeScore({ ...base, hints: 10 }).hints, 400);
+
+  // Moves: 10 per extra placement, 5 per extra turn; doing better than par costs nothing.
+  assert.equal(C.computeScore({ ...base, placements: 8 }).moves, 20);
+  assert.equal(C.computeScore({ ...base, turns: 9 }).moves, 20);
+  assert.equal(C.computeScore({ ...base, placements: 4, turns: 2 }).moves, 0);
+  assert.equal(C.computeScore({ ...base, placements: 500, turns: 500 }).moves, 250);
+
+  // Everything at once adds up, and the score never goes below zero.
+  assert.equal(C.computeScore({ seconds: 300, pieces: 6, placements: 9, turns: 10, parTurns: 4, hints: 2 }).score, 380);
+  assert.equal(C.computeScore({ seconds: 99999, pieces: 6, placements: 500, turns: 500, parTurns: 0, hints: 99 }).score, 0);
+  assert.equal(C.computeScore({ ...base, parTurns: undefined, turns: 0 }).moves, 0, 'no par given counts as zero');
+});
+
+test('score breakdown names what cost points', () => {
+  assert.equal(C.scoreBreakdown({ time: 0, hints: 0, moves: 0 }), 'No points lost');
+  assert.equal(C.scoreBreakdown({ time: 90, hints: 200, moves: 20 }), '1000 − 90 time − 200 hints − 20 extra moves');
+  assert.equal(C.scoreBreakdown({ time: 0, hints: 100, moves: 0 }), '1000 − 100 hints');
+});
+
+test('share text leads with the score when there is one', () => {
+  const base = { date: '2026-11-07', seconds: 222, moves: 28, hints: 0 };
+  assert.match(C.shareText({ ...base, score: 874 }), /\n🏆 874 · ⏱ 3:42 · 🔄 28 moves/);
+  assert.doesNotMatch(C.shareText(base), /🏆/);
+  assert.match(C.shareText({ ...base, score: 0 }), /🏆 0 ·/, 'a score of zero is still shown');
+});
+
 test('share text marks a retry', () => {
   const t = C.shareText({ date: '2026-11-07', source: 'NASA picture', seconds: 65, moves: 3, hints: 0, retry: true });
   assert.match(t.split('\n')[0], /Nov 7 · 🔁 retry$/);

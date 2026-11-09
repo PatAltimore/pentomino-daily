@@ -546,8 +546,76 @@
     return s;
   }
 
+  // ---------------------------------------------------------------------- scoring
+  //
+  // A score to compare with friends who played the same puzzle. It starts at 1000 and loses
+  // points for being slow, for hints, and for wasted moves, so a clean, quick run scores 1000.
+  // Time itself is never changed: a hint costs points, not seconds.
+  //   time   after a free allowance of 10 s per piece, 1.5 points per second (at most 450)
+  //   hints  100 points each (at most 400)
+  //   moves  10 points per extra placement beyond one per piece, plus 5 per extra turn beyond
+  //          the fewest turns the pieces needed from the way they started (at most 250)
+  const SCORING = {
+    base: 1000,
+    freeSecondsPerPiece: 10,
+    perSecond: 1.5,
+    timeCap: 450,
+    perHint: 100,
+    hintCap: 400,
+    perExtraPlacement: 10,
+    perExtraTurn: 5,
+    moveCap: 250,
+  };
+
+  /** The fewest turn / flip presses to bring a piece from orientation (r, f) to upright (0, no flip). */
+  function minTurns(r, f) {
+    const goal = '0,0';
+    const seen = new Map([[(r & 3) + ',' + (f ? 1 : 0), 0]]);
+    const queue = [[r & 3, f ? 1 : 0]];
+    while (queue.length) {
+      const [cr, cf] = queue.shift();
+      const d = seen.get(cr + ',' + cf);
+      if (cr + ',' + cf === goal) return d;
+      // clockwise, counter-clockwise, and flip (which mirrors left-right on screen)
+      for (const [nr, nf] of [[(cr + 1) & 3, cf], [(cr + 3) & 3, cf], [(4 - cr) & 3, cf ? 0 : 1]]) {
+        const k = nr + ',' + nf;
+        if (!seen.has(k)) {
+          seen.set(k, d + 1);
+          queue.push([nr, nf]);
+        }
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * Score a finished puzzle. Input: seconds (real elapsed time), pieces, placements (drops onto
+   * the board or tray), turns (rotate/flip presses), parTurns (fewest turns needed) and hints.
+   * Returns { score, time, hints, moves } where the last three are the points each cost.
+   */
+  function computeScore(o) {
+    const k = SCORING;
+    const free = k.freeSecondsPerPiece * o.pieces;
+    const time = Math.min(k.timeCap, Math.round(Math.max(0, o.seconds - free) * k.perSecond));
+    const hints = Math.min(k.hintCap, (o.hints || 0) * k.perHint);
+    const extraPlacements = Math.max(0, o.placements - o.pieces);
+    const extraTurns = Math.max(0, o.turns - (o.parTurns || 0));
+    const moves = Math.min(k.moveCap, extraPlacements * k.perExtraPlacement + extraTurns * k.perExtraTurn);
+    return { score: Math.max(0, k.base - time - hints - moves), time, hints, moves };
+  }
+
+  /** "1000 − 120 time − 100 hints − 40 extra moves", skipping the parts that cost nothing. */
+  function scoreBreakdown(b) {
+    const parts = [String(SCORING.base)];
+    if (b.time) parts.push('− ' + b.time + ' time');
+    if (b.hints) parts.push('− ' + b.hints + ' hints');
+    if (b.moves) parts.push('− ' + b.moves + ' extra moves');
+    return parts.length === 1 ? 'No points lost' : parts.join(' ');
+  }
+
   function shareText(o) {
     const parts = ['⏱ ' + formatTime(o.seconds), '🔄 ' + o.moves + (o.moves === 1 ? ' move' : ' moves')];
+    if (o.score !== undefined && o.score !== null) parts.unshift('🏆 ' + o.score);
     if (o.hints) parts.push('💡 ' + o.hints + (o.hints === 1 ? ' hint' : ' hints'));
     if (o.mirrored) parts.push('🪞 mirrored ' + o.mirrored + 'ly');
     return (
@@ -560,7 +628,10 @@
     TETROMINOES,
     SHAPE_SETS,
     ORIENTS,
-    HINT_PENALTY_SECONDS: 15,
+    SCORING,
+    minTurns,
+    computeScore,
+    scoreBreakdown,
     applyT,
     normalize,
     identify,

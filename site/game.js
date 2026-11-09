@@ -66,6 +66,8 @@
   var won = false;
   var practice = false; // replaying after a win: the new result is not saved
   var moves = 0;
+  var turns = 0; // rotate / flip presses (a subset of moves)
+  var parTurns = 0; // the fewest turns the pieces needed from the way they started
   var hints = 0;
   var hintId = -1;
   var hintTimer = 0;
@@ -384,6 +386,7 @@
       st.f = nf;
     }
     moves++;
+    turns++;
     updateHud();
     invalidate();
     checkWin();
@@ -554,7 +557,7 @@
   });
 
   function updateHud() {
-    $('timer').textContent = C.formatTime(elapsed() + hints * C.HINT_PENALTY_SECONDS);
+    $('timer').textContent = C.formatTime(elapsed());
     $('moves').textContent = moves + (moves === 1 ? ' move' : ' moves');
     var h = $('hints');
     h.hidden = hints === 0;
@@ -614,7 +617,7 @@
     var pick = sel && wrong.indexOf(sel) >= 0 ? sel : wrong[Math.floor(Math.random() * wrong.length)];
     suggestedId = pick.id;
     if (selected !== pick.id) select(pick.id); // the piece glows
-    $('notice-hint').textContent = 'Show hint (+' + C.HINT_PENALTY_SECONDS + 's)';
+    $('notice-hint').textContent = 'Show hint (−' + C.SCORING.perHint + ' points)';
     showNotice('Every piece is placed, but some are in the wrong spot. The glowing piece is one of them. Want a hint?', 0, true);
   }
 
@@ -645,8 +648,16 @@
     selected = -1;
     hintId = -1;
     stopClock();
-    var seconds = Math.round(elapsed() + hints * C.HINT_PENALTY_SECONDS);
-    var result = { seconds: seconds, moves: moves, hints: hints };
+    var seconds = Math.round(elapsed()); // real time: hints cost points, not seconds
+    var scored = C.computeScore({
+      seconds: seconds,
+      pieces: pieces.length,
+      placements: moves - turns,
+      turns: turns,
+      parTurns: parTurns,
+      hints: hints,
+    });
+    var result = { seconds: seconds, moves: moves, turns: turns, hints: hints, score: scored.score, lost: { time: scored.time, hints: scored.hints, moves: scored.moves } };
     if (mode && mode !== 'normal') result.mirrored = mode; // 'horizontal' or 'vertical'
     if (!params.has('seed') && !practice) {
       store.set(doneKey(puzzleKey, puzzleDate), result);
@@ -674,6 +685,13 @@
       a.textContent = 'View original';
       credit.append(' · ', a);
     }
+    var hasScore = typeof result.score === 'number';
+    $('win-score').hidden = !hasScore;
+    $('win-breakdown').hidden = !hasScore;
+    if (hasScore) {
+      $('win-score').textContent = '🏆 ' + result.score + ' points';
+      $('win-breakdown').textContent = C.scoreBreakdown(result.lost || {});
+    }
     var bits = ['⏱ ' + C.formatTime(result.seconds), '🔄 ' + result.moves];
     if (result.hints) bits.push('💡 ' + result.hints);
     if (result.mirrored) bits.push('🪞 mirrored ' + result.mirrored + 'ly');
@@ -690,6 +708,7 @@
     if (!lastResult) return;
     var text = C.shareText({
       date: puzzleDate,
+      score: lastResult.score,
       retry: practice,
       mirrored: lastResult.mirrored,
       source: data.sample ? '' : puzzleCfg.name,
@@ -725,6 +744,7 @@
     askDismissed = false;
     showNotice('');
     moves = 0;
+    turns = 0;
     hints = 0;
     hintId = -1;
     clock = { running: false, base: 0, since: 0 };
@@ -756,6 +776,7 @@
     if (puzzleCfg.fixed) { // pieces start the right way up and stay that way
       initial = pieces.map(function () { return { r: 0, f: false }; });
     }
+    parTurns = initial.reduce(function (sum, o) { return sum + C.minTurns(o.r, o.f); }, 0);
     resetPositions();
   }
 
@@ -763,7 +784,8 @@
     won = true;
     hints = result.hints || 0;
     moves = result.moves || 0;
-    clock = { running: false, base: Math.max(0, result.seconds - hints * C.HINT_PENALTY_SECONDS), since: 0 };
+    turns = result.turns || 0;
+    clock = { running: false, base: result.seconds, since: 0 };
     pieces.forEach(function (p, i) {
       var st = states[i];
       st.placed = true;
@@ -855,6 +877,7 @@
     box.textContent = '';
     var solved = 0;
     var playable = 0;
+    var points = 0; // today's total score across solved puzzles
     items.forEach(function (it) {
       var btn = document.createElement('button');
       btn.type = 'button';
@@ -885,7 +908,8 @@
         if (done) {
           solved++;
           btn.className += ' done';
-          badge.textContent = '✓ ' + C.formatTime(done.seconds) + (done.mirrored ? ' 🪞' : '');
+          badge.textContent = '✓ ' + (typeof done.score === 'number' ? done.score + ' · ' : '') + C.formatTime(done.seconds) + (done.mirrored ? ' 🪞' : '');
+          if (typeof done.score === 'number') points += done.score;
         } else {
           badge.textContent = 'Play';
         }
@@ -905,7 +929,7 @@
 
     var isToday = !day || day === currentDay; // the sample has no day
     $('start-progress').textContent = playable
-      ? solved + ' of ' + playable + ' solved' + (isToday ? ' today' : '') + (solved === playable && isToday ? ' — come back tomorrow, or try an earlier day!' : '')
+      ? solved + ' of ' + playable + ' solved' + (isToday ? ' today' : '') + (points ? ' · 🏆 ' + points + ' points' : '') + (solved === playable && isToday ? ' — come back tomorrow, or try an earlier day!' : '')
       : 'No pictures could be loaded. Try again later.';
   }
 
