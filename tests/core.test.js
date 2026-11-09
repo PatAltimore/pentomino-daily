@@ -245,6 +245,13 @@ test('share text leads with the score when there is one', () => {
   assert.match(C.shareText({ ...base, score: 0 }), /🏆 0 ·/, 'a score of zero is still shown');
 });
 
+test('share text says when assist was on', () => {
+  const base = { date: '2026-11-07', seconds: 65, moves: 3, hints: 0, score: 900 };
+  assert.match(C.shareText({ ...base, assist: true }), /🏆 900 · ⏱ 1:05 · 🔄 3 moves · 🟢 assist on/);
+  assert.doesNotMatch(C.shareText(base), /assist/);
+  assert.match(C.shareText({ ...base, assist: true, mirrored: 'vertical' }), /🪞 mirrored vertically · 🟢 assist on/);
+});
+
 test('share text marks a retry', () => {
   const t = C.shareText({ date: '2026-11-07', source: 'NASA picture', seconds: 65, moves: 3, hints: 0, retry: true });
   assert.match(t.split('\n')[0], /Nov 7 · 🔁 retry$/);

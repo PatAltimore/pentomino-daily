@@ -180,3 +180,44 @@ dialog p { margin: 0; }
 #notice[hidden] { display: none; }
 
 dialog .score { font-size: 1.6rem; font-weight: 800; color: var(--accent); }
+
+/* ------------------------------------------------------------------- assist toggle */
+#assist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 4px 0;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+#assist-row small { color: var(--muted); }
+@media (max-width: 360px) { #assist-row small { display: none; } }
+#assist {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 22px;
+  margin: 0;
+  position: relative;
+  border-radius: 11px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#assist::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.2s, background 0.2s;
+}
+#assist:checked { background: #1f5c3b; border-color: #38d27a; }
+#assist:checked::after { transform: translateX(18px); background: #38d27a; }
+#assist:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

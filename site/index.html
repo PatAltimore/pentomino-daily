@@ -56,6 +56,11 @@
       </div>
     </main>
 
+    <label id="assist-row" for="assist">
+      <span class="assist-text"><b>Assist</b> <small>green border when a piece is in the right place</small></span>
+      <input id="assist" type="checkbox" role="switch">
+    </label>
+
     <nav id="toolbar" aria-label="Piece controls">
       <button id="btn-rotate-ccw" type="button" class="icon-btn" aria-label="Rotate counter-clockwise" title="Rotate counter-clockwise">&#x27F2;</button>
       <button id="btn-rotate-cw" type="button" class="icon-btn" aria-label="Rotate clockwise" title="Rotate clockwise">&#x27F3;</button>
@@ -91,6 +96,7 @@
         <li><b>Drag</b> a piece onto the board. <b>Tap a piece</b> to select it, tap again to rotate.</li>
         <li id="help-fixed" hidden>In this puzzle the pieces <b>can't be rotated or flipped</b>. They already face the right way, so just drag each one to its place.</li>
         <li>Use the <b>&#x27F2; counter-clockwise</b> and <b>&#x27F3; clockwise</b> buttons to turn the selected piece, and <b>Flip</b> to mirror it (keys: R turns clockwise, Shift+R counter-clockwise, F flips).</li>
+        <li>Switch on <b>Assist</b> (under the board) to get a green border when a piece is in the right place. When you share a result it says assist was on.</li>
         <li>Rebuilding the picture as a <b>mirror image</b> (left-to-right or top-to-bottom) also counts. A note is added to your time.</li>
         <li>A piece snaps to the grid. It only counts when it sits in the right spot, facing the right way.</li>
         <li><b>Hint</b> shows where one piece belongs and costs 100 points. Your time is never changed.</li>

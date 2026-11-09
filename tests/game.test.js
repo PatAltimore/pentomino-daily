@@ -25,7 +25,11 @@ function makeEnv({ search = '?debug', hash = '#sample', storage = new Map(), ima
       const base = k in t ? t[k] : () => {};
       return calls && typeof base === 'function' ? (...a) => (calls.push(k), base(...a)) : base;
     },
-    set: (t, k, v) => ((t[k] = v), true),
+    set: (t, k, v) => {
+      if (calls && (k === 'strokeStyle' || k === 'shadowColor')) calls.push(k + '=' + v);
+      t[k] = v;
+      return true;
+    },
   });
 
   function makeEl(id) {
@@ -1047,6 +1051,184 @@ test('the shared link for the sample puzzle is #sample, and carries no debug or 
     env.el('btn-share').fire('click');
     await until(() => env.clipboard.text);
     assert.match(env.clipboard.text, /\nhttp:\/\/localhost\/#sample$/);
+  } finally {
+    env.teardown();
+  }
+});
+
+
+// ---- Assist: a green border around pieces that are in the right spot and orientation
+const GREEN = '#38d27a';
+const frame = () => new Promise((r) => setTimeout(r, 40));
+const switchAssist = (env, on) => {
+  env.el('assist').checked = on;
+  env.el('assist').fire('change');
+};
+
+test('with assist off no green border is drawn, with it on a correct piece gets one', async () => {
+  const storage = new Map();
+  const env = makeEnv({ storage, recordCalls: true });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    assert.equal(env.el('assist').checked, false, 'off by default');
+
+    await solveByDragging(env, 1); // one piece placed correctly
+    await frame();
+    assert.ok(!env.calls.includes('strokeStyle=' + GREEN), 'no green while assist is off');
+
+    switchAssist(env, true);
+    env.calls.length = 0;
+    await frame();
+    assert.ok(env.calls.includes('strokeStyle=' + GREEN), 'the correct piece is outlined in green');
+    assert.equal(storage.get('pd:assist'), 'true', 'the choice is remembered');
+
+    switchAssist(env, false);
+    env.calls.length = 0;
+    await frame();
+    assert.ok(!env.calls.includes('strokeStyle=' + GREEN), 'and it goes away when switched off');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('the green border animates when a piece becomes correct, and only for correct pieces', async () => {
+  const env = makeEnv({ recordCalls: true });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    switchAssist(env, true);
+    await frame();
+
+    // A piece dropped in the wrong place gets no green and starts no animation.
+    const { pieces, states, layout } = env.pento();
+    const { s, bx, by } = layout;
+    const canvas = env.el('board');
+    const last = pieces.length - 1; // the last piece, so the helper below can still place pieces 0-2
+    const st0 = states[last];
+    const [sx, sy] = [bx + st0.slot[0] * s, by + st0.slot[1] * s];
+    const wrongSpot = Core.pivotForGrid(pieces[last], st0.r, st0.f, [0, 0]);
+    canvas.fire('pointerdown', ptr(sx, sy));
+    canvas.fire('pointermove', ptr(bx + wrongSpot[0] * s, by + wrongSpot[1] * s));
+    canvas.fire('pointerup', ptr(bx + wrongSpot[0] * s, by + wrongSpot[1] * s));
+    env.calls.length = 0;
+    await frame();
+    const wrongPlaced = st0.placed && !Core.isHome(pieces[last], st0);
+    if (wrongPlaced) assert.ok(!env.calls.includes('strokeStyle=' + GREEN), 'a wrong spot gets no green border');
+
+    // Putting a piece where it belongs starts the animation: the canvas keeps redrawing for a moment.
+    await solveByDragging(env, 3);
+    env.calls.length = 0;
+    await new Promise((r) => setTimeout(r, 150));
+    const frames = env.calls.filter((c) => c === 'clearRect').length;
+    assert.ok(frames >= 3, 'redrawn repeatedly while the border pops: ' + frames);
+    assert.ok(env.calls.includes('strokeStyle=' + GREEN));
+    assert.ok(env.calls.includes('shadowColor=' + GREEN), 'with a glow');
+
+    // ...and the redrawing stops once the animation has finished.
+    await new Promise((r) => setTimeout(r, 1500));
+    env.calls.length = 0;
+    await new Promise((r) => setTimeout(r, 120));
+    assert.ok(env.calls.filter((c) => c === 'clearRect').length <= 1, 'the animation loop has ended');
+    await frame();
+    assert.ok(env.pento().states[0].ok, 'a piece placed correctly is still flagged right');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('a result solved with assist is marked, in the dialog, the saved result and the shared text', async () => {
+  const storage = new Map();
+  const env = makeEnv({ storage });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    switchAssist(env, true);
+    switchAssist(env, false); // switching it off again later does not undo that it was on
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+
+    const key = [...storage.keys()].find((k) => k.startsWith('pd:done:'));
+    assert.equal(JSON.parse(storage.get(key)).assist, true);
+    assert.match(env.el('win-stats').textContent, /🟢 assist on/);
+    env.el('btn-share').fire('click');
+    await until(() => env.clipboard.text);
+    assert.match(env.clipboard.text, /🟢 assist on/);
+    env.teardown();
+
+    // Reopening the solved puzzle still shows the note.
+    const again = makeEnv({ storage });
+    await until(() => again.el('win').open, 3000);
+    assert.match(again.el('win-stats').textContent, /assist on/);
+    again.teardown();
+  } finally {
+    env.teardown();
+  }
+});
+
+test('a result solved without assist says nothing about it', async () => {
+  const storage = new Map();
+  const env = makeEnv({ storage });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    const key = [...storage.keys()].find((k) => k.startsWith('pd:done:'));
+    assert.equal(JSON.parse(storage.get(key)).assist, undefined);
+    assert.doesNotMatch(env.el('win-stats').textContent, /assist/);
+    env.el('btn-share').fire('click');
+    await until(() => env.clipboard.text);
+    assert.doesNotMatch(env.clipboard.text, /assist/);
+  } finally {
+    env.teardown();
+  }
+});
+
+test('assist stays on between visits, and a run that starts with it on counts as assisted', async () => {
+  const storage = new Map([['pd:assist', 'true']]);
+  const env = makeEnv({ storage });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    assert.equal(env.el('assist').checked, true, 'remembered');
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    const key = [...storage.keys()].find((k) => k.startsWith('pd:done:'));
+    assert.equal(JSON.parse(storage.get(key)).assist, true, 'on from the start, even though it was never touched');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('restarting resets the assisted flag to whatever assist is set to now', async () => {
+  const storage = new Map();
+  const env = makeEnv({ storage });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    switchAssist(env, true);
+    switchAssist(env, false);
+    env.el('btn-restart').fire('click'); // a fresh run, with assist off
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    const key = [...storage.keys()].find((k) => k.startsWith('pd:done:'));
+    assert.equal(JSON.parse(storage.get(key)).assist, undefined, 'the earlier toggling belonged to the abandoned run');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('the A key toggles assist', async () => {
+  const env = makeEnv();
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    const press = (key) => (env.docHandlers.keydown || []).forEach((fn) => fn({ key }));
+    press('a');
+    assert.equal(env.el('assist').checked, true);
+    press('A');
+    assert.equal(env.el('assist').checked, false);
   } finally {
     env.teardown();
   }

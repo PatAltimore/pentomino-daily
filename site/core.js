@@ -618,6 +618,7 @@
     if (o.score !== undefined && o.score !== null) parts.unshift('🏆 ' + o.score);
     if (o.hints) parts.push('💡 ' + o.hints + (o.hints === 1 ? ' hint' : ' hints'));
     if (o.mirrored) parts.push('🪞 mirrored ' + o.mirrored + 'ly');
+    if (o.assist) parts.push('🟢 assist on');
     return (
       '🧩 Pentomino Daily · ' + (o.source ? o.source + ' · ' : '') + formatDateShort(o.date) + (o.retry ? ' · 🔁 retry' : '') + '\n' + parts.join(' · ') + (o.url ? '\n' + o.url : '')
     );

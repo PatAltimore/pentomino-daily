@@ -70,6 +70,13 @@
   var parTurns = 0; // the fewest turns the pieces needed from the way they started
   var hints = 0;
   var hintId = -1;
+  // Assist: a green border, animated when it first appears, around each piece that is in the right
+  // spot and orientation. A preference kept in the browser; `assistUsed` is true for a run if it was
+  // on at the start or switched on during it, and is recorded in the result and the shared text.
+  var assistOn = store.get('pd:assist') === true;
+  var assistUsed = false;
+  var GREEN = '#38d27a';
+  var GLOW_MS = 1400;
   var hintTimer = 0;
   var lastResult = null;
   var clock = { running: false, base: 0, since: 0 };
@@ -285,7 +292,35 @@
     ctx.lineWidth = line;
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     ctx.stroke();
+    if (assistOn && !won && st.ok && st.placed && !st.dragging) {
+      // Right spot, right way round: a green border that pops (thick, glowing) and settles.
+      var k2 = Math.min(1, Math.max(0, (Date.now() - st.glowAt) / GLOW_MS));
+      var base = Math.max(2.5, cs * 0.06);
+      ctx.lineWidth = base * (1 + 1.4 * (1 - k2));
+      ctx.strokeStyle = GREEN;
+      ctx.shadowColor = GREEN;
+      ctx.shadowBlur = 22 * (1 - k2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
     ctx.restore();
+  }
+
+  // Is any piece still in the middle of its green pop? If so keep redrawing.
+  function glowActive() {
+    var now = Date.now();
+    return states.some(function (st) { return st.ok && st.placed && now - st.glowAt < GLOW_MS; });
+  }
+
+  // Work out which pieces are in the right spot and orientation now, and start the pop on any that
+  // just became right.
+  function updateAssist() {
+    pieces.forEach(function (p, i) {
+      var st = states[i];
+      var nowOk = st.placed && !st.dragging && C.isHome(p, st);
+      if (nowOk && !st.ok) st.glowAt = Date.now();
+      st.ok = nowOk;
+    });
   }
 
   function draw() {
@@ -311,6 +346,7 @@
 
     for (var z = 0; z < zOrder.length; z++) drawPiece(zOrder[z]);
     if (hintId >= 0) drawHint(pieces[hintId]);
+    if (assistOn && !won && glowActive()) invalidate();
   }
 
   // ------------------------------------------------------------------- hit test
@@ -405,6 +441,7 @@
     var p = pieces[id];
     var prev = drag.prev;
     st.dragging = false;
+    st.ok = false; // so setting it back down in the right place pops again
     var snap = C.findSnap(p, st.r, st.f, st.pivot, { cols: cols, rows: rows, occupied: occupiedMap(id), radius: 1 });
     if (snap) {
       st.placed = true;
@@ -515,12 +552,27 @@
   $('btn-help').addEventListener('click', function () { helpDialog.showModal(); });
   $('btn-share').addEventListener('click', share);
 
+  function setAssist(on) {
+    assistOn = on;
+    $('assist').checked = on;
+    store.set('pd:assist', on);
+    if (on) {
+      assistUsed = true; // switching it on at any point makes this an assisted run
+      updateAssist();
+      states.forEach(function (st) { if (st.ok) st.glowAt = Date.now(); }); // pop the ones already right
+    }
+    invalidate();
+  }
+  $('assist').checked = assistOn;
+  $('assist').addEventListener('change', function () { setAssist($('assist').checked); });
+
   document.addEventListener('keydown', function (e) {
     if (winDialog.open || helpDialog.open || e.ctrlKey || e.metaKey || e.altKey) return;
     var k = e.key.toLowerCase();
     if (k === 'r') transformPiece(selected, e.shiftKey ? 'ccw' : 'cw');
     else if (k === 'f') transformPiece(selected, 'flip');
     else if (k === 'h') useHint();
+    else if (k === 'a') setAssist(!assistOn);
     else if (k === 'escape') select(-1);
   });
 
@@ -590,6 +642,7 @@
 
   // -------------------------------------------------------------------- win/lose
   function checkWin() {
+    updateAssist();
     if (won) return;
     // Solved the usual way, or rebuilt as a mirror image of the picture: both count.
     var mode = C.solvedMode(pieces, states, getVisual(), { cols: cols, rows: rows });
@@ -659,6 +712,7 @@
     });
     var result = { seconds: seconds, moves: moves, turns: turns, hints: hints, score: scored.score, lost: { time: scored.time, hints: scored.hints, moves: scored.moves } };
     if (mode && mode !== 'normal') result.mirrored = mode; // 'horizontal' or 'vertical'
+    if (assistUsed) result.assist = true;
     if (!params.has('seed') && !practice) {
       store.set(doneKey(puzzleKey, puzzleDate), result);
       if (puzzleDate === currentDay) { // earlier days don't count toward the streak or best time
@@ -695,6 +749,7 @@
     var bits = ['⏱ ' + C.formatTime(result.seconds), '🔄 ' + result.moves];
     if (result.hints) bits.push('💡 ' + result.hints);
     if (result.mirrored) bits.push('🪞 mirrored ' + result.mirrored + 'ly');
+    if (result.assist) bits.push('🟢 assist on');
     if (practice) bits.push('🔁 retry');
     if (stats.streak) bits.push('🔥 ' + stats.streak + '-day streak');
     if (stats.best !== null && stats.best !== undefined) bits.push('best ' + C.formatTime(stats.best));
@@ -718,6 +773,7 @@
       score: lastResult.score,
       retry: practice,
       mirrored: lastResult.mirrored,
+      assist: lastResult.assist,
       source: data.sample ? '' : puzzleCfg.name,
       seconds: lastResult.seconds,
       moves: lastResult.moves,
@@ -744,12 +800,13 @@
   // ------------------------------------------------------------------ setup/flow
   function resetPositions() {
     states = pieces.map(function (p, i) {
-      return { placed: false, dragging: false, g0: null, r: initial[i].r, f: initial[i].f, pivot: [0, 0], slot: [0, 0] };
+      return { placed: false, dragging: false, g0: null, r: initial[i].r, f: initial[i].f, pivot: [0, 0], slot: [0, 0], ok: false, glowAt: 0 };
     });
     zOrder = pieces.map(function (p) { return p.id; });
     selected = -1;
     askDismissed = false;
     showNotice('');
+    assistUsed = assistOn; // a run started with assist on counts as an assisted run
     moves = 0;
     turns = 0;
     hints = 0;
