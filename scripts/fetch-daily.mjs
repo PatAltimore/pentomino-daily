@@ -11,19 +11,20 @@
  *   wikipedia   Wikipedia's Picture of the day from the day before <day>
  *   tetromino   a public-domain Art Institute of Chicago artwork chosen by <day>
  *   fixed       another Art Institute artwork (the no-rotation puzzle)
+ *   commons     a Wikimedia Commons featured photograph chosen by <day> (a second no-rotation puzzle)
  * The two "picture of the day" puzzles use the previous day's picture so that it already exists in
- * every time zone at local midnight. If the Art Institute is unreachable, tetromino and fixed fall
- * back to older Wikipedia pictures.
+ * every time zone at local midnight. If the Art Institute or Commons is unreachable, tetromino, fixed
+ * and commons fall back to older Wikipedia pictures.
  *
  * The window is the UTC date's neighbours: from tomorrow (UTC) back BACK_DAYS days, which covers
  * every time zone's local "today" and leaves a week of earlier puzzles to play.
  *
- * Set IMAGE_SOURCE=apod (NASA only), wikimedia (Wikipedia only) or artic (Art Institute only)
- * to fetch just one source.
+ * Set IMAGE_SOURCE=apod (NASA only), wikimedia (Wikipedia only), artic (Art Institute only) or
+ * commons (Commons featured photos only) to fetch just one source.
  *
  * Environment:
  *   NASA_API_KEY        free key from https://api.nasa.gov (falls back to the rate-limited DEMO_KEY)
- *   IMAGE_SOURCE        auto (default, all) | apod | wikimedia | artic
+ *   IMAGE_SOURCE        auto (default, all) | apod | wikimedia | artic | commons
  *   FORCE_REFETCH       set to 1 to fetch every picture even if it is already in site/
  *   ALLOW_COPYRIGHTED   "true" to use APOD pictures that carry a photographer's copyright.
  *                       Default is to skip them, because this script republishes the image file.
@@ -126,6 +127,46 @@ export function pickArtic(json, { date, seed, skipIds = [] } = {}) {
     credit: [byline && 'Artwork: ' + byline, 'Art Institute of Chicago, CC0 public domain'].filter(Boolean).join(' · '),
     pageUrl: `https://www.artic.edu/artworks/${art.id}`,
     imageUrls: [`${iiif}/${art.image_id}/full/843,/0/default.jpg`, `${iiif}/${art.image_id}/full/600,/0/default.jpg`],
+  };
+}
+
+/**
+ * Choose a featured photograph from a Wikimedia Commons query response (generator=search with
+ * imageinfo). Only ordinary JPEG photos of a puzzle-friendly shape and size with a stated licence
+ * are considered. The pick is deterministic for a given seed; `skipIds` avoids reusing a picture.
+ */
+export function pickCommons(json, { date, seed, skipIds = [] } = {}) {
+  const raw = json && json.query && json.query.pages;
+  const pages = Array.isArray(raw) ? raw : raw ? Object.values(raw) : [];
+  const meta = (info, name) => stripHtml(info.extmetadata && info.extmetadata[name] && info.extmetadata[name].value).trim();
+  const items = pages
+    .map((page) => ({ page, info: page && page.imageinfo && page.imageinfo[0] }))
+    .filter(({ page, info }) => {
+      if (!page || !info || skipIds.includes(page.pageid)) return false;
+      if (info.mime !== 'image/jpeg') return false;
+      if (!(info.width >= 1000 || info.height >= 1000) || Math.min(info.width, info.height) < 700) return false;
+      const ratio = info.width / info.height;
+      if (ratio < 0.6 || ratio > 1.7) return false;
+      const license = meta(info, 'LicenseShortName');
+      if (!license || /fair use|non-?free/i.test(license)) return false;
+      return Boolean(info.thumburl || info.url);
+    })
+    .sort((a, b) => a.page.pageid - b.page.pageid);
+  if (!items.length) return null;
+  const { page, info } = items[hashSeed(String(seed)) % items.length];
+  const fileTitle = String(page.title || '').replace(/^File:/i, '').replace(/\.[a-z0-9]+$/i, '').replace(/_/g, ' ');
+  const artist = tidy(meta(info, 'Artist'), 100);
+  const license = tidy(meta(info, 'LicenseShortName'), 40);
+  const big = info.thumburl || info.url;
+  return {
+    source: 'Wikimedia Commons featured picture',
+    id: page.pageid,
+    date,
+    title: tidy(meta(info, 'ObjectName') || fileTitle || 'Photograph', 120),
+    description: tidy(meta(info, 'ImageDescription'), 1500),
+    credit: [artist && 'Photo: ' + artist, license && 'License: ' + license].filter(Boolean).join(' · ') || 'See the file page for credit and license',
+    pageUrl: info.descriptionurl || '',
+    imageUrls: [...new Set([big, big.replace(/\/\d+px-([^/]+)$/, '/960px-$1')])],
   };
 }
 
@@ -253,7 +294,7 @@ async function fetchJsonRetry(url) {
   }
 }
 
-const KEYS = ['nasa', 'wikipedia', 'tetromino', 'fixed'];
+const KEYS = ['nasa', 'wikipedia', 'tetromino', 'fixed', 'commons'];
 const BACK_DAYS = 5;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const todayUtc = () => new Date().toISOString().slice(0, 10);
@@ -427,6 +468,31 @@ async function fetchNasaLibrary(day, skipIds = []) {
   return buildNasaLibraryPick(item, assets, day);
 }
 
+const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';
+// Featured photographs, minus the categories that are scans of artwork, maps and diagrams.
+const COMMONS_QUERY =
+  'filetype:bitmap incategory:"Featured pictures on Wikimedia Commons" ' +
+  '-incategory:"Featured pictures of artwork|Featured pictures of paintings|Featured maps|Featured pictures of maps|Featured pictures of illustrations|Featured pictures of drawings and watercolors"';
+
+/** A featured photograph from Wikimedia Commons, chosen by day: the day picks a position in the results. */
+async function fetchCommons(day, skipIds) {
+  const params = new URLSearchParams({
+    action: 'query',
+    format: 'json',
+    formatversion: '2',
+    generator: 'search',
+    gsrsearch: COMMONS_QUERY,
+    gsrnamespace: '6',
+    gsrlimit: '20',
+    gsroffset: String(hashSeed('commons:' + day) % 3000),
+    prop: 'imageinfo',
+    iiprop: 'url|size|mime|extmetadata',
+    iiurlwidth: '1280',
+    iiextmetadatafilter: 'Artist|LicenseShortName|ImageDescription|ObjectName',
+  });
+  return pickCommons(await fetchJsonRetry(`${COMMONS_API}?${params}`), { date: day, seed: day + ':commons', skipIds });
+}
+
 /** APOD for one date. A 4xx (e.g. a date NASA has not published yet) means "no picture", not an outage. */
 async function fetchApodOn(date, apiKey, allowCopyrighted) {
   try {
@@ -461,6 +527,9 @@ async function main() {
       if (want('apod')) chain.push({ name: 'NASA Image and Video Library', fallback: true, run: () => fetchNasaLibrary(day, usedItemIds(days, ['nasa'], day, key)) });
     } else if (key === 'wikipedia') {
       if (want('wikimedia')) chain.push({ name: 'Wikipedia Picture of the day', run: () => fetchWikipedia(before(1)) });
+    } else if (key === 'commons') {
+      if (want('commons')) chain.push({ name: 'Wikimedia Commons featured picture', run: () => fetchCommons(day, usedItemIds(days, ['commons'], day, key)) });
+      if (want('wikimedia')) chain.push({ name: 'Wikipedia Picture of the day (4 days back)', fallback: true, run: () => fetchWikipedia(before(4)) });
     } else {
       if (want('artic')) chain.push({ name: 'Art Institute of Chicago', run: () => fetchArtic(day, key, usedItemIds(days, ['tetromino', 'fixed'], day, key)) });
       if (want('wikimedia')) {

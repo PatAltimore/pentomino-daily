@@ -41,6 +41,7 @@
     nasa: { name: 'NASA picture', icon: '🚀', level: 'Medium', blurb: 'A picture from NASA', set: 'pentomino', grid: [5, 6], fixed: false },
     wikipedia: { name: 'Wikipedia picture', icon: '📖', level: 'Medium', blurb: 'Wikipedia\'s picture of the day', set: 'pentomino', grid: [5, 6], fixed: false },
     fixed: { name: 'Fixed pieces', icon: '📌', level: 'Challenge', blurb: 'Artwork, 8 pieces, no turning', set: 'pentomino', grid: [5, 8], fixed: true },
+    commons: { name: 'Fixed photo', icon: '📷', level: 'Challenge', blurb: 'Photograph, 8 pieces, no turning', set: 'pentomino', grid: [5, 8], fixed: true },
   };
   var SAMPLE = { name: 'Sample picture', icon: '🌙', level: '', blurb: 'Placeholder until real pictures are fetched', file: 'data/sample.json', set: 'pentomino', grid: [5, 6], fixed: false };
   var route = C.parseRoute(location.hash);

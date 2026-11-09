@@ -1,16 +1,17 @@
 # Pentomino Daily
 
-Four daily jigsaws at different levels. A start page lets you pick one; each is a picture of the day cut into **pentomino or tetromino pieces**. Drag, rotate and flip the pieces to rebuild it. Everyone gets the same four puzzles each day, and there is a Wordle-style share button.
+Five daily jigsaws at different levels. A start page lets you pick one; each is a picture of the day cut into **pentomino or tetromino pieces**. Drag, rotate and flip the pieces to rebuild it. Everyone gets the same five puzzles each day, and there is a Wordle-style share button.
 
 It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it hosts for free on GitHub Pages.
 
 ## How it works
 
-- **Four puzzles a day, for your local day.** Each has its own picture and its own saved result:
+- **Five puzzles a day, for your local day.** Each has its own picture and its own saved result:
   - **Easy, Tetromino puzzle**: 4-cell pieces on a 4x6 board (6 pieces). A public-domain artwork from the Art Institute of Chicago.
   - **Medium, NASA picture**: pentominoes on a 5x6 board. NASA's Astronomy Picture of the Day, or a picture from the NASA Image and Video Library when that isn't available.
   - **Medium, Wikipedia picture**: pentominoes on a 5x6 board, using Wikipedia's Picture of the day.
   - **Challenge, Fixed pieces**: 8 pentominoes on a 5x8 board that can't be rotated or flipped. They start upright, so the work is finding where each belongs. A second Art Institute artwork.
+  - **Challenge, Fixed photo**: the same no-turning rules, with a photograph. A Wikimedia Commons featured picture chosen by the date; the photographer and licence (often CC BY-SA) are shown in the result.
 
   (Landscape pictures swap the board's width and height.)
 - **Local days and earlier puzzles.** The deploy publishes a week of puzzle days, not just one, plus a `manifest.json` listing them. The browser uses the player's local date to choose "today", so the puzzles change at local midnight and everyone in a time zone gets the same ones. The start page has arrows to open any earlier day (days in the player's future are hidden). Earlier days are saved and shareable but don't count toward the streak or best time.
@@ -21,7 +22,7 @@ It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it h
   - If a source is down, stand-in pictures keep the puzzle available (NASA library for APOD; older Wikipedia pictures for the Art Institute), and are swapped for the real one when the source returns. The deploy also remembers everything it fetched between runs.
 - **Same puzzle for everyone.** The puzzle source and date seed a random generator that tiles the grid with pentominoes. Pieces use distinct shapes where possible, and a solution always exists because the pieces are cut from a complete tiling.
 - **The picture is the hint.** Each piece shows its slice of the image, and it only counts when it sits in the right spot facing the right way. Pieces start scrambled in the tray, turned and flipped. Pictures with big flat areas (black space, a plain sky) look the same in more than one arrangement, so the game compares what is on the board with the real picture: a piece also counts if the slices it shows look like the picture in those cells. If every piece is placed but some are still wrong, the game says so, highlights one of the wrong pieces (it glows) and asks whether you want a hint for it ("Show hint", which costs the usual 15 seconds, or "Not now"). It doesn't ask again until you change the board.
-- **Mirrored solves count.** If you rebuild the whole picture as a mirror image (every piece flipped and in its mirrored spot, left-to-right or top-to-bottom), the puzzle is solved. Your time gets a note ("🪞 mirrored horizontally") in the result, on the start page and in the shared text, and the dialog shows the picture the right way round. Mirrored solves still count for the streak. Every piece must be mirrored the same way; mixing doesn't count. (Not available in Fixed pieces, where pieces can't be flipped.)
+- **Mirrored solves count.** If you rebuild the whole picture as a mirror image (every piece flipped and in its mirrored spot, left-to-right or top-to-bottom), the puzzle is solved. Your time gets a note ("🪞 mirrored horizontally") in the result, on the start page and in the shared text, and the dialog shows the picture the right way round. Mirrored solves still count for the streak. Every piece must be mirrored the same way; mixing doesn't count. (Not available in the two fixed puzzles, where pieces can't be flipped.)
 - **Phone browsers.** iPhone Safari draws its address/tab bar over the bottom of the page and swallows taps near it, which can cover the buttons. On iPhone browsers (not an installed home-screen app) the page reserves extra space under the buttons, shrinking the playfield rather than hiding the controls, and sizes itself from the browser's visible height (`site/viewport.js`).
 - **Controls.** Drag a piece to move it. Tap a piece to select it, tap again to rotate. Clockwise, counter-clockwise and Flip buttons act on the selected piece (keyboard: R turns clockwise, Shift+R counter-clockwise, F flips, H for hint, Esc to deselect).
 - **Scoring.** Time plus moves. A hint shows where one piece belongs and adds 15 seconds. Restart starts the puzzle over; once you have solved it, Restart starts a practice run that doesn't change your saved result.
@@ -39,7 +40,7 @@ site/                  the website (this folder is what gets deployed)
   data/sample.json     placeholder puzzle offered on the start page until real pictures have been fetched
   images/sample.svg
 scripts/
-  fetch-daily.mjs      downloads the four puzzle pictures + captions into site/
+  fetch-daily.mjs      downloads the five puzzle pictures + captions into site/
   serve.mjs            tiny local web server
 tests/                 node:test suites (logic, fetch parsing, and a fake-DOM play-through)
 .github/workflows/deploy.yml   runs tests, fetches a week of puzzle pictures, deploys to GitHub Pages (hourly)
@@ -71,7 +72,7 @@ The workflow runs on every push and hourly (GitHub's scheduler is best-effort, s
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `NASA_API_KEY` | `DEMO_KEY` | Your free NASA API key |
-| `IMAGE_SOURCE` | `auto` | `auto` (all), `apod` (NASA only), `wikimedia` (Wikipedia only) or `artic` (Art Institute only) |
+| `IMAGE_SOURCE` | `auto` | `auto` (all), `apod` (NASA only), `wikimedia` (Wikipedia only), `artic` (Art Institute only) or `commons` (Commons featured photos only) |
 | `ALLOW_COPYRIGHTED` | off | Set to `true` to include APOD pictures that carry a photographer's copyright |
 
 ## A note on image rights

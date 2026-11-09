@@ -369,7 +369,7 @@ const localToday = () => {
   return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
 };
 const shiftDay = (day, n) => new Date(Date.parse(day + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
-const ALL_KEYS = ['nasa', 'wikipedia', 'tetromino', 'fixed'];
+const ALL_KEYS = ['nasa', 'wikipedia', 'tetromino', 'fixed', 'commons'];
 
 /** Files for a fake server: `days` maps a day to the puzzle keys published for it. */
 function publish(days) {
@@ -387,14 +387,14 @@ function publish(days) {
   return files;
 }
 
-test('the start page offers all four puzzles and shows which are solved today', async () => {
+test('the start page offers all five puzzles and shows which are solved today', async () => {
   const today = localToday();
   const storage = new Map([['pd:done:nasa:' + today, JSON.stringify({ seconds: 125, moves: 20, hints: 0 })]]);
   const env = makeEnv({ hash: '', storage, files: publish({ [today]: ALL_KEYS }) });
   try {
     await until(() => env.el('start-progress').textContent);
     assert.equal(env.el('start').hidden, false, 'start page is shown');
-    assert.equal(env.el('start-progress').textContent, '1 of 4 solved today');
+    assert.equal(env.el('start-progress').textContent, '1 of 5 solved today');
     assert.match(env.el('day-label').textContent, /^Today/);
     assert.equal(env.pento().pieces.length, 0);
   } finally {
@@ -452,7 +452,7 @@ test('an earlier day lists its own puzzles and results, and can be played', asyn
   try {
     await until(() => env.el('start-progress').textContent);
     assert.match(env.el('day-label').textContent, /^Yesterday/);
-    assert.equal(env.el('start-progress').textContent, '1 of 4 solved', "yesterday's list, not today's");
+    assert.equal(env.el('start-progress').textContent, '1 of 5 solved', "yesterday's list, not today's");
     assert.equal(env.el('day-next').disabled, false, 'can go forward to today');
   } finally {
     env.teardown();
@@ -877,5 +877,29 @@ test('"Not now" dismisses the offer and it does not come back until the board ch
     assert.equal(env.el('notice-actions').hidden, false);
   } finally {
     env.teardown();
+  }
+});
+
+
+test('the fixed photo puzzle is a second no-rotation puzzle with its own pieces', async () => {
+  const today = localToday();
+  const files = publish({ [today]: ALL_KEYS });
+  const [a, b] = [makeEnv({ hash: '#fixed', files }), makeEnv({ hash: '#commons', files })];
+  try {
+    await until(() => a.pento() && a.pento().pieces.length > 0 && b.pento() && b.pento().pieces.length > 0);
+    const photo = b.pento();
+    assert.equal(photo.layout.cols * photo.layout.rows, 40);
+    assert.equal(photo.pieces.length, 8);
+    assert.ok(photo.states.every((st) => st.r === 0 && !st.f), 'pieces start upright');
+    assert.equal(b.el('btn-rotate-cw').hidden, true);
+    assert.equal(b.el('btn-rotate-ccw').hidden, true);
+    assert.equal(b.el('btn-flip').hidden, true);
+    assert.match(b.el('puzzle-date').textContent, /Fixed photo/);
+
+    const layoutOf = (p) => p.pieces.map((x) => x.letter + x.home.map((c) => c.join(',')).join(';')).join('|');
+    assert.notEqual(layoutOf(a.pento()), layoutOf(photo), 'a different tiling from the artwork puzzle');
+  } finally {
+    a.teardown();
+    b.teardown();
   }
 });

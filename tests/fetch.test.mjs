@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pickApod, isPlaceholderTitle, pickWikimedia, pickArtic, pickNasaLibraryItem, buildNasaLibraryPick, hashSeed } from '../scripts/fetch-daily.mjs';
+import { pickApod, pickCommons, isPlaceholderTitle, pickWikimedia, pickArtic, pickNasaLibraryItem, buildNasaLibraryPick, hashSeed } from '../scripts/fetch-daily.mjs';
 
 const apod = {
   date: '2026-11-07',
@@ -172,4 +172,69 @@ test('NASA library: skipIds keeps a day from reusing a picture another day alrea
   assert.notEqual(first.data[0].nasa_id, second.data[0].nasa_id);
   assert.equal(pickNasaLibraryItem(json, 'seed', ['A', 'B', 'C']), null);
   assert.equal(buildNasaLibraryPick(first, null, 'd').id, first.data[0].nasa_id);
+});
+
+const commonsPage = (id, over = {}, info = {}) => ({
+  pageid: id,
+  title: 'File:Red_fox_' + id + '.jpg',
+  imageinfo: [
+    {
+      mime: 'image/jpeg',
+      width: 4000,
+      height: 3000,
+      thumburl: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Red_fox_${id}.jpg/1280px-Red_fox_${id}.jpg`,
+      descriptionurl: 'https://commons.wikimedia.org/wiki/File:Red_fox_' + id + '.jpg',
+      extmetadata: {
+        Artist: { value: '<a href="//commons.wikimedia.org/wiki/User:Jane">Jane Photographer</a>' },
+        LicenseShortName: { value: 'CC BY-SA 4.0' },
+        ImageDescription: { value: '<p>A red fox &amp; her kit.</p>' },
+        ObjectName: { value: 'Red fox ' + id },
+      },
+      ...info,
+    },
+  ],
+  ...over,
+});
+
+test('Commons: picks a licensed landscape/portrait JPEG photo deterministically and credits the photographer', () => {
+  const json = {
+    query: {
+      pages: [
+        commonsPage(30),
+        commonsPage(10),
+        commonsPage(20, {}, { mime: 'image/png' }), // not a JPEG photo
+        commonsPage(40, {}, { width: 600, height: 500 }), // too small
+        commonsPage(50, {}, { width: 6000, height: 800 }), // a very long strip
+        commonsPage(60, {}, { extmetadata: { Artist: { value: 'X' } } }), // no licence
+        commonsPage(70, {}, { extmetadata: { LicenseShortName: { value: 'Fair use' } } }),
+        commonsPage(80, { imageinfo: [] }),
+        commonsPage(90),
+      ],
+    },
+  };
+  const a = pickCommons(json, { date: '2026-11-07', seed: 'k' });
+  const b = pickCommons({ query: { pages: [...json.query.pages].reverse() } }, { date: '2026-11-07', seed: 'k' });
+  assert.equal(a.id, b.id, 'same seed, same pick, whatever order the API returned');
+  assert.ok([10, 30, 90].includes(a.id), 'only the usable pages: ' + a.id);
+  assert.equal(a.title, 'Red fox ' + a.id);
+  assert.equal(a.description, 'A red fox & her kit.');
+  assert.equal(a.credit, 'Photo: Jane Photographer · License: CC BY-SA 4.0');
+  assert.match(a.pageUrl, /^https:\/\/commons\.wikimedia\.org\/wiki\/File:/);
+  assert.match(a.imageUrls[0], /1280px-/);
+  assert.match(a.imageUrls[1], /960px-/, 'a smaller size as a fallback');
+  assert.equal(a.source, 'Wikimedia Commons featured picture');
+  assert.equal(a.date, '2026-11-07');
+});
+
+test('Commons: accepts the older object-keyed response, honours skipIds and returns null when nothing fits', () => {
+  const keyed = { query: { pages: { 11: commonsPage(11), 12: commonsPage(12) } } };
+  const first = pickCommons(keyed, { date: 'd', seed: 's' });
+  const second = pickCommons(keyed, { date: 'd', seed: 's', skipIds: [first.id] });
+  assert.notEqual(first.id, second.id);
+  assert.equal(pickCommons(keyed, { date: 'd', seed: 's', skipIds: [11, 12] }), null);
+  assert.equal(pickCommons({ query: { pages: [] } }, { date: 'd', seed: 's' }), null);
+  assert.equal(pickCommons(null, { date: 'd', seed: 's' }), null);
+  const noName = pickCommons({ query: { pages: [commonsPage(5, {}, { extmetadata: { LicenseShortName: { value: 'CC0' } } })] } }, { date: 'd', seed: 's' });
+  assert.equal(noName.title, 'Red fox 5', 'falls back to the file name');
+  assert.equal(noName.credit, 'License: CC0');
 });
