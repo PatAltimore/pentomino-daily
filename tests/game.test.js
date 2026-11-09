@@ -902,7 +902,7 @@ test('"Not now" dismisses the offer and it does not come back until the board ch
 });
 
 
-test('the fixed photo puzzle is a second no-rotation puzzle with its own pieces', async () => {
+test('the animal photo puzzle is a second no-rotation puzzle with its own pieces', async () => {
   const today = localToday();
   const files = publish({ [today]: ALL_KEYS });
   const [a, b] = [makeEnv({ hash: '#fixed', files }), makeEnv({ hash: '#commons', files })];
@@ -915,7 +915,7 @@ test('the fixed photo puzzle is a second no-rotation puzzle with its own pieces'
     assert.equal(b.el('btn-rotate-cw').hidden, true);
     assert.equal(b.el('btn-rotate-ccw').hidden, true);
     assert.equal(b.el('btn-flip').hidden, true);
-    assert.match(b.el('puzzle-date').textContent, /Fixed photo/);
+    assert.match(b.el('puzzle-date').textContent, /Animal photo/);
 
     const layoutOf = (p) => p.pieces.map((x) => x.letter + x.home.map((c) => c.join(',')).join(';')).join('|');
     assert.notEqual(layoutOf(a.pento()), layoutOf(photo), 'a different tiling from the artwork puzzle');
@@ -1262,13 +1262,13 @@ test('each start-page card describes its picture category, piece count and orien
     const list = env.el('puzzle-list');
     const names = findByClass(list, 'name').map((n) => n.textContent);
     const subs = findByClass(list, 'sub').map((n) => n.textContent.replace(/\u00a0/g, ' '));
-    assert.deepEqual(names, ['Tetromino puzzle', 'NASA picture', 'Wikipedia picture', 'Fixed pieces', 'Fixed photo']);
+    assert.deepEqual(names, ['Fixed pieces', 'Animal photo', 'Tetromino puzzle', 'NASA picture', 'Wikipedia picture']);
     assert.deepEqual(subs, [
+      'Artwork · 8 pieces · fixed orientation',
+      'Photograph · 8 pieces · fixed orientation',
       'Artwork · 6 pieces · rotate & flip',
       'Space photo · 6 pieces · rotate & flip',
       'Picture of the day · 6 pieces · rotate & flip',
-      'Artwork · 8 pieces · fixed orientation',
-      'Photograph · 8 pieces · fixed orientation',
     ]);
     assert.ok(subs.every((t) => !/easy|medium|challenge/i.test(t)), 'no difficulty labels');
   } finally {

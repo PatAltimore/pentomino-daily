@@ -11,9 +11,9 @@ It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it h
   - **NASA picture**: pentominoes on a 5x6 board. NASA's Astronomy Picture of the Day, or a picture from the NASA Image and Video Library when that isn't available.
   - **Wikipedia picture**: pentominoes on a 5x6 board, using Wikipedia's Picture of the day.
   - **Fixed pieces**: 8 pentominoes on a 5x8 board that can't be rotated or flipped. They start upright, so the work is finding where each belongs. A second Art Institute artwork.
-  - **Fixed photo**: the same no-turning rules, with a photograph. A Wikimedia Commons featured picture chosen by the date; the photographer and licence (often CC BY-SA) are shown in the result.
+  - **Animal photo**: the same no-turning rules, with a photograph of an animal. A Wikimedia Commons featured animal picture chosen by the date (by their animal categories; if those names don't match, from all featured pictures whose own categories say animal, leaving out sculptures, paintings and museum specimens). It is never a non-animal picture: if Commons can't be reached that day has no animal photo, and earlier days stay from the saved copies. The photographer and licence (often CC BY-SA) are shown in the result.
 
-  Each start-page card says what the picture is (artwork, space photo, picture of the day, photograph), how many pieces it has, and whether the pieces are "fixed orientation" (can't be turned) or "rotate & flip". (Landscape pictures swap the board's width and height.)
+  The start page lists the two fixed-orientation puzzles first. Each card says what the picture is (artwork, space photo, picture of the day, photograph), how many pieces it has, and whether the pieces are "fixed orientation" (can't be turned) or "rotate & flip". (Landscape pictures swap the board's width and height.)
 - **Local days and earlier puzzles.** The deploy publishes a week of puzzle days, not just one, plus a `manifest.json` listing them. The browser uses the player's local date to choose "today", so the puzzles change at local midnight and everyone in a time zone gets the same ones. The start page has arrows to open any earlier day (days in the player's future are hidden). Earlier days are saved and shareable but don't count toward the streak or best time.
   - The artwork puzzles are picked by date from the Art Institute's public-domain (CC0) works, so any day can be generated, including tomorrow in UTC (needed for time zones ahead of UTC).
   - The two picture-of-the-day puzzles show the *previous* day's picture. Today's picture isn't published yet in every time zone at local midnight, but yesterday's always is.
@@ -78,7 +78,7 @@ The workflow runs on every push and hourly (GitHub's scheduler is best-effort, s
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `NASA_API_KEY` | `DEMO_KEY` | Your free NASA API key |
-| `IMAGE_SOURCE` | `auto` | `auto` (all), `apod` (NASA only), `wikimedia` (Wikipedia only), `artic` (Art Institute only) or `commons` (Commons featured photos only) |
+| `IMAGE_SOURCE` | `auto` | `auto` (all), `apod` (NASA only), `wikimedia` (Wikipedia only), `artic` (Art Institute only) or `commons` (the Commons animal photos only) |
 | `ALLOW_COPYRIGHTED` | off | Set to `true` to include APOD pictures that carry a photographer's copyright |
 
 ## A note on image rights

@@ -36,12 +36,13 @@
   // #<puzzle> for today's, #sample for the placeholder. #<day> or nothing shows the start page.
   // Each puzzle: which piece set it is cut from, board size ([portrait cols, rows]; landscape
   // pictures swap them) and whether pieces may be rotated and flipped.
+  // The order here is the order on the start page: the fixed-orientation puzzles first.
   var PUZZLES = {
+    fixed: { name: 'Fixed pieces', icon: '📌', category: 'Artwork', set: 'pentomino', grid: [5, 8], fixed: true },
+    commons: { name: 'Animal photo', icon: '🐾', category: 'Photograph', set: 'pentomino', grid: [5, 8], fixed: true },
     tetromino: { name: 'Tetromino puzzle', icon: '🟪', iconShape: 'T', category: 'Artwork', set: 'tetromino', grid: [4, 6], fixed: false },
     nasa: { name: 'NASA picture', icon: '🚀', category: 'Space photo', set: 'pentomino', grid: [5, 6], fixed: false },
     wikipedia: { name: 'Wikipedia picture', icon: '📖', category: 'Picture of the day', set: 'pentomino', grid: [5, 6], fixed: false },
-    fixed: { name: 'Fixed pieces', icon: '📌', category: 'Artwork', set: 'pentomino', grid: [5, 8], fixed: true },
-    commons: { name: 'Fixed photo', icon: '📷', category: 'Photograph', set: 'pentomino', grid: [5, 8], fixed: true },
   };
   var SAMPLE = { name: 'Sample picture', icon: '🌙', category: 'Illustration', file: 'data/sample.json', set: 'pentomino', grid: [5, 6], fixed: false };
   var route = C.parseRoute(location.hash);

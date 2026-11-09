@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pickApod, pickCommons, isPlaceholderTitle, pickWikimedia, pickArtic, pickNasaLibraryItem, buildNasaLibraryPick, hashSeed } from '../scripts/fetch-daily.mjs';
+import { pickApod, pickCommons, categoryNames, looksLikeAnimal, isPlaceholderTitle, pickWikimedia, pickArtic, pickNasaLibraryItem, buildNasaLibraryPick, hashSeed } from '../scripts/fetch-daily.mjs';
 
 const apod = {
   date: '2026-11-07',
@@ -237,4 +237,39 @@ test('Commons: accepts the older object-keyed response, honours skipIds and retu
   const noName = pickCommons({ query: { pages: [commonsPage(5, {}, { extmetadata: { LicenseShortName: { value: 'CC0' } } })] } }, { date: 'd', seed: 's' });
   assert.equal(noName.title, 'Red fox 5', 'falls back to the file name');
   assert.equal(noName.credit, 'License: CC0');
+});
+
+const withCategories = (page, names) => ({ ...page, categories: names.map((n) => ({ title: 'Category:' + n })) });
+
+test('Commons: categoryNames strips the prefix, and looksLikeAnimal reads a picture\'s own categories', () => {
+  const page = withCategories(commonsPage(1), ['Vulpes vulpes', 'Mammals of Europe', 'Featured pictures of mammals']);
+  assert.deepEqual(categoryNames(page), ['Vulpes vulpes', 'Mammals of Europe', 'Featured pictures of mammals']);
+  assert.deepEqual(categoryNames({}), []);
+
+  assert.equal(looksLikeAnimal(page), true);
+  assert.equal(looksLikeAnimal(withCategories(commonsPage(2), ['Birds of Kenya', 'Featured pictures of birds'])), true);
+  assert.equal(looksLikeAnimal(withCategories(commonsPage(3), ['Butterflies of India'])), true);
+  assert.equal(looksLikeAnimal(withCategories(commonsPage(4), ['Churches in France', 'Featured pictures of buildings'])), false, 'not an animal');
+  assert.equal(looksLikeAnimal(withCategories(commonsPage(5), ['Sunsets', 'Featured pictures of landscapes'])), false);
+  assert.equal(looksLikeAnimal(commonsPage(6)), false, 'no categories at all: not accepted');
+  // An animal in a sculpture, painting, stamp or museum specimen is not a photo of an animal.
+  assert.equal(looksLikeAnimal(withCategories(commonsPage(7), ['Lion sculptures', 'Statues of animals'])), false);
+  assert.equal(looksLikeAnimal(withCategories(commonsPage(8), ['Mammals', 'Paintings of animals'])), false);
+  assert.equal(looksLikeAnimal(withCategories(commonsPage(9), ['Birds', 'Taxidermy in museums'])), false);
+  assert.equal(looksLikeAnimal(withCategories(commonsPage(10), ['Dogs', 'Skeletons of mammals'])), false);
+});
+
+test('Commons: an accept filter limits the pick to the pages it allows', () => {
+  const pages = [
+    withCategories(commonsPage(1), ['Churches in France']),
+    withCategories(commonsPage(2), ['Birds of Kenya']),
+    withCategories(commonsPage(3), ['Sunsets']),
+    withCategories(commonsPage(4), ['Mammals of Asia']),
+  ];
+  for (const seed of ['a', 'b', 'c', 'd', 'e', 'f']) {
+    const pick = pickCommons({ query: { pages } }, { date: 'd', seed, accept: looksLikeAnimal });
+    assert.ok([2, 4].includes(pick.id), 'only animals can be picked: ' + pick.id);
+  }
+  const none = pickCommons({ query: { pages: [pages[0], pages[2]] } }, { date: 'd', seed: 's', accept: looksLikeAnimal });
+  assert.equal(none, null, 'no animal among them: no pick, not a non-animal one');
 });
