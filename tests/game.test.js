@@ -965,3 +965,89 @@ test('turns are counted for the score and a restart resets them', async () => {
     env.teardown();
   }
 });
+
+
+const layoutOf = (pento) => pento.pieces.map((p) => p.letter + p.home.map((c) => c.join(',')).join(';')).join('|');
+
+test('the shared link opens exactly the puzzle that was shared, even on another day', async () => {
+  const today = localToday();
+  const yesterday = shiftDay(today, -1);
+  const files = publish({ [today]: ALL_KEYS, [yesterday]: ALL_KEYS });
+  const first = makeEnv({ hash: '#' + yesterday + '/tetromino', files, search: '?debug' });
+  let link = '';
+  let sharedLayout = '';
+  try {
+    await until(() => first.pento() && first.pento().pieces.length > 0);
+    first.el('help').open = false;
+    sharedLayout = layoutOf(first.pento());
+    await solveByDragging(first);
+    await until(() => first.el('win').open, 4000);
+    first.el('btn-share').fire('click');
+    await until(() => first.clipboard.text);
+    const line = first.clipboard.text.split('\n').find((l) => l.startsWith('http'));
+    assert.equal(line, 'http://localhost/#' + yesterday + '/tetromino', 'the link names the day and the puzzle');
+    link = line.slice(line.indexOf('#'));
+  } finally {
+    first.teardown();
+  }
+
+  // A friend opens the link (today is a different day for them): they land on that exact puzzle.
+  const friend = makeEnv({ hash: link, files, search: '?debug' });
+  try {
+    await until(() => friend.pento() && friend.pento().pieces.length > 0);
+    assert.equal(layoutOf(friend.pento()), sharedLayout, 'the very same pieces');
+    assert.match(friend.el('puzzle-date').textContent, /Tetromino puzzle/);
+    assert.match(friend.el('puzzle-date').textContent, /earlier day/);
+  } finally {
+    friend.teardown();
+  }
+});
+
+test("a link to a day that is still ahead of the player's own date opens that day", async () => {
+  const today = localToday();
+  const tomorrow = shiftDay(today, 1);
+  const storage = new Map();
+  const files = publish({ [tomorrow]: ALL_KEYS, [today]: ALL_KEYS });
+  const env = makeEnv({ hash: '#' + tomorrow + '/nasa', storage, files, search: '?debug' });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    assert.doesNotMatch(env.el('puzzle-date').textContent, /earlier day/, 'tomorrow is not an earlier day');
+    env.el('help').open = false;
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    assert.ok(storage.has('pd:done:nasa:' + tomorrow), 'saved against the day it belongs to');
+    assert.ok(!storage.has('pd:stats'), "the streak is only for the player's own today");
+    env.el('btn-more').fire('click');
+    assert.equal(env.hashLog.at(-1), '', 'Back goes to the start page');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('a link to a day that is no longer published says so instead of opening a different puzzle', async () => {
+  const today = localToday();
+  const env = makeEnv({ hash: '#2020-01-01/nasa', files: publish({ [today]: ALL_KEYS }), search: '?debug' });
+  try {
+    await until(() => env.el('status').textContent.includes('available any more'));
+    assert.equal(env.el('status').hidden, false);
+    assert.equal(env.pento().pieces.length, 0, 'no puzzle was opened');
+  } finally {
+    env.teardown();
+  }
+});
+
+test('the shared link for the sample puzzle is #sample, and carries no debug or seed parameters', async () => {
+  const storage = new Map();
+  const env = makeEnv({ storage, search: '?debug&reset' });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    await solveByDragging(env);
+    await until(() => env.el('win').open, 4000);
+    env.el('btn-share').fire('click');
+    await until(() => env.clipboard.text);
+    assert.match(env.clipboard.text, /\nhttp:\/\/localhost\/#sample$/);
+  } finally {
+    env.teardown();
+  }
+});

@@ -704,6 +704,13 @@
     if (!winDialog.open) winDialog.showModal();
   }
 
+  // A link that opens exactly this puzzle: its day and name (the day matters: a friend in another
+  // time zone may be on a different local date). The sample puzzle has no day.
+  function puzzleLink() {
+    var fragment = puzzleKey === 'sample' ? 'sample' : puzzleDate + '/' + puzzleKey;
+    return location.origin + location.pathname + '#' + fragment;
+  }
+
   function share() {
     if (!lastResult) return;
     var text = C.shareText({
@@ -715,7 +722,7 @@
       seconds: lastResult.seconds,
       moves: lastResult.moves,
       hints: lastResult.hints,
-      url: location.origin + location.pathname,
+      url: puzzleLink(),
     });
     var toast = function (msg) { $('toast').textContent = msg; };
     var viaClipboard = function () {
@@ -822,7 +829,7 @@
   }
 
   function backToStart() {
-    location.hash = puzzleDate && puzzleDate !== currentDay ? puzzleDate : '';
+    location.hash = puzzleDate && puzzleDate < currentDay ? puzzleDate : '';
   }
 
   // ------------------------------------------------------------------ start page
@@ -946,7 +953,13 @@
     return loadManifest().then(function (m) {
       if (!m) throw new Error('No puzzles have been published yet.');
       resolveDays(m);
-      puzzleDate = browsableDays.indexOf(route.day) >= 0 ? route.day : currentDay;
+      // A link names its day, and that is the puzzle to open, even if it is a day ahead of the
+      // player's own date (the sender may be in a time zone ahead of theirs). The day arrows
+      // still stop at the player's today.
+      if (route.day && m.days.indexOf(route.day) < 0) {
+        throw new Error('That day\u2019s puzzle isn\u2019t available any more. Tap \u2190 to see today\u2019s puzzles.');
+      }
+      puzzleDate = route.day || currentDay;
       if ((m.entries[puzzleDate] || []).indexOf(puzzleKey) < 0) throw new Error('This puzzle is not available.');
       return fetchJson(dataFile(puzzleDate, puzzleKey));
     });
@@ -989,7 +1002,7 @@
         newPuzzle();
         statusEl.hidden = true;
         $('puzzle-date').textContent = (data.sample ? 'Sample puzzle · ' : (puzzleCfg.name + ' · ')) + C.formatDateShort(puzzleDate) +
-          (puzzleDate !== currentDay ? ' · earlier day' : '');
+          (puzzleDate < currentDay ? ' · earlier day' : '');
 
         if (params.has('reset')) store.remove(doneKey(puzzleKey, puzzleDate));
         var done = params.has('seed') ? null : store.get(doneKey(puzzleKey, puzzleDate));

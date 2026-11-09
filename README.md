@@ -31,7 +31,7 @@ It is a static site (plain HTML/JS/CSS, no build step, no dependencies), so it h
   - **Wasted moves**: 10 points per placement beyond one per piece, and 5 per rotate/flip press beyond the fewest the pieces needed from the way they started (at most 250).
 
   A quick, tidy run with no hints scores 1000, and a score never goes below 0. The result dialog shows the score with what cost points, the shared text starts with it (`🏆 874 · ⏱ 3:42 · …`), and the start page shows each solved puzzle's score and the day's total. Results saved before scores existed show their time only. Restart starts the puzzle over; once you have solved it, Restart starts a practice run that is scored but doesn't change your saved result.
-- **Sharing and streaks.** Results are copied or shared as text. Solving any of today's puzzles counts for the day's streak. Streaks and best time live in the browser's local storage; there are no accounts or backend.
+- **Sharing and streaks.** Results are copied or shared as text, ending with a link that opens exactly that puzzle (for example `…/#2026-11-08/nasa`). The link names the day, so a friend in another time zone gets the same pieces and picture. A link to a day still ahead of the friend's own date opens it, but the day arrows on the start page only go up to their today, and a link to a day that has dropped out of the week's window says it isn't available any more. Solving any of today's puzzles counts for the day's streak. Streaks and best time live in the browser's local storage; there are no accounts or backend.
 
 ## Project layout
 
