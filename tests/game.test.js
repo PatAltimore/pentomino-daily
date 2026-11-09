@@ -868,7 +868,7 @@ test('"Not now" dismisses the offer and it does not come back until the board ch
     const y = by + (cell[1] + 0.5) * s;
     const canvas = env.el('board');
     canvas.fire('pointerdown', ptr(x, y));
-    canvas.fire('pointermove', ptr(x + 4, y + 4));
+    canvas.fire('pointermove', ptr(x + 14, y + 14)); // past the 6px drag threshold: a drag, not a tap
     canvas.fire('pointermove', ptr(x + 1, y + 1));
     canvas.fire('pointerup', ptr(x + 1, y + 1));
     assert.equal(st.placed, true, 'the piece went back');
