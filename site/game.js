@@ -324,7 +324,8 @@
   function updateAssist() {
     pieces.forEach(function (p, i) {
       var st = states[i];
-      var nowOk = st.placed && !st.dragging && C.isHome(p, st);
+      // Exactly right (spot and orientation), not merely covering the right cells in a twin orientation.
+      var nowOk = st.placed && !st.dragging && C.isExactHome(p, st);
       if (nowOk && !st.ok) st.glowAt = Date.now();
       st.ok = nowOk;
     });

@@ -397,6 +397,22 @@
     return isHome(piece, st) || looksRight(piece, st, visual);
   }
 
+  /**
+   * Exactly right: in its home spot AND the orientation it was cut in, so every slice shows what belongs
+   * in its cell. Stricter than isHome, which also accepts a "twin" orientation (a flipped T, a turned Z...)
+   * that covers the same cells but shows mirrored or turned slices. That is enough to win, but it is not
+   * what Assist should call correct.
+   */
+  function isExactHome(piece, st) {
+    return (
+      !!st.placed &&
+      (st.r & 3) === 0 &&
+      !st.f &&
+      st.g0[0] === piece.home[0][0] &&
+      st.g0[1] === piece.home[0][1]
+    );
+  }
+
   /** The pieces that are still wrong: in the tray, or placed where the picture does not match. */
   function misplaced(pieces, states, visual) {
     return pieces.filter((p, i) => !pieceFits(p, states[i], visual));
@@ -658,6 +674,7 @@
     pivotForGrid,
     findSnap,
     isHome,
+    isExactHome,
     transformGrid,
     gridsMatch,
     looksRight,

@@ -130,6 +130,44 @@ test('every scrambled orientation can reach the solved one with rotate and flip'
   assert.equal(seen.size, 8);
 });
 
+// Every (r, f, g0) other than the exact home state that covers a piece's own cells (its "twin" orientations).
+function twinPlacements(piece, cols, rows) {
+  const want = piece.home.map((c) => c.join(',')).sort().join(';');
+  const out = [];
+  for (let f = 0; f < 2; f++) {
+    for (let r = 0; r < 4; r++) {
+      for (let x = -4; x < cols + 4; x++) {
+        for (let y = -4; y < rows + 4; y++) {
+          const got = C.cellsAt(piece, r, !!f, [x, y]).map((c) => c.join(',')).sort().join(';');
+          const exact = r === 0 && !f && x === piece.home[0][0] && y === piece.home[0][1];
+          if (got === want && !exact) out.push({ r, f: !!f, g0: [x, y] });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+test('isExactHome is stricter than isHome: a twin orientation covers the cells but is not exactly right', () => {
+  let checked = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const pieces = C.generateTiling(5, 6, C.mulberry32(seed)).map((t, i) => C.buildPiece(t, i));
+    for (const p of pieces) {
+      const exact = { placed: true, r: 0, f: false, g0: p.home[0].slice(), pivot: [0, 0] };
+      assert.ok(C.isExactHome(p, exact) && C.isHome(p, exact), p.letter + ' in its own state is exactly home');
+      assert.ok(!C.isExactHome(p, { ...exact, placed: false }), 'a piece in the tray is not home');
+      assert.ok(!C.isExactHome(p, { ...exact, g0: [exact.g0[0] + 1, exact.g0[1]] }), 'one cell over is not home');
+      for (const twin of twinPlacements(p, 5, 6)) {
+        const st = { placed: true, ...twin, pivot: [0, 0] };
+        assert.ok(C.isHome(p, st), p.letter + ' twin still covers its cells (that is enough to win)');
+        assert.ok(!C.isExactHome(p, st), p.letter + ' twin r=' + twin.r + ' f=' + twin.f + ' shows turned or mirrored slices: not exact');
+        checked++;
+      }
+    }
+  }
+  assert.ok(checked > 20, 'the symmetric shapes were exercised: ' + checked);
+});
+
 test('symmetric pieces count as home in their twin orientation', () => {
   const tiles = [];
   for (let seed = 1; seed < 40 && tiles.length < 3; seed++) {

@@ -1103,28 +1103,53 @@ test('with assist off no green border is drawn, with it on a correct piece gets 
 });
 
 test('the green border animates when a piece becomes correct, and only for correct pieces', async () => {
-  const env = makeEnv({ recordCalls: true });
+  // A fixed seed: the sample puzzle otherwise changes with the date, and this test needs a free spot.
+  const env = makeEnv({ recordCalls: true, search: '?debug&seed=alt0' });
   try {
     await until(() => env.pento() && env.pento().pieces.length > 0);
     env.el('help').open = false;
     switchAssist(env, true);
     await frame();
 
-    // A piece dropped in the wrong place gets no green and starts no animation.
+    // A piece dropped in the wrong place gets no green and starts no animation. Pieces 0-2 are placed
+    // correctly below, so find one of the others (turned any way) that fits a free spot that is not its own.
     const { pieces, states, layout } = env.pento();
-    const { s, bx, by } = layout;
+    const { s, bx, by, cols, rows } = layout;
     const canvas = env.el('board');
-    const last = pieces.length - 1; // the last piece, so the helper below can still place pieces 0-2
+    const taken = new Set(pieces.slice(0, 3).flatMap((p) => p.home.map((c) => c.join(','))));
+    let wrong = null;
+    for (const idx of [3, 4, 5]) {
+      const ownHome = pieces[idx].home.map((c) => c.join(',')).sort().join(';');
+      for (const f of [false, true]) {
+        for (let r = 0; r < 4 && !wrong; r++) {
+          for (let x = 0; x < cols && !wrong; x++) {
+            for (let y = 0; y < rows && !wrong; y++) {
+              const cells = Core.cellsAt(pieces[idx], r, f, [x, y]);
+              const inside = cells.every((c) => c[0] >= 0 && c[0] < cols && c[1] >= 0 && c[1] < rows);
+              const free = cells.every((c) => !taken.has(c.join(',')));
+              const key = cells.map((c) => c.join(',')).sort().join(';');
+              if (inside && free && key !== ownHome) wrong = { idx, r, f, spot: [x, y] };
+            }
+          }
+        }
+      }
+      if (wrong) break;
+    }
+    assert.ok(wrong, 'a free wrong spot exists for this seed');
+    const last = wrong.idx;
     const st0 = states[last];
+    st0.r = wrong.r; // turned in the tray first, as a player would
+    st0.f = wrong.f;
     const [sx, sy] = [bx + st0.slot[0] * s, by + st0.slot[1] * s];
-    const wrongSpot = Core.pivotForGrid(pieces[last], st0.r, st0.f, [0, 0]);
+    const wrongSpot = Core.pivotForGrid(pieces[last], wrong.r, wrong.f, wrong.spot);
     canvas.fire('pointerdown', ptr(sx, sy));
     canvas.fire('pointermove', ptr(bx + wrongSpot[0] * s, by + wrongSpot[1] * s));
     canvas.fire('pointerup', ptr(bx + wrongSpot[0] * s, by + wrongSpot[1] * s));
+    assert.equal(st0.placed, true, 'the wrong piece was placed');
     env.calls.length = 0;
     await frame();
-    const wrongPlaced = st0.placed && !Core.isHome(pieces[last], st0);
-    if (wrongPlaced) assert.ok(!env.calls.includes('strokeStyle=' + GREEN), 'a wrong spot gets no green border');
+    assert.ok(!Core.isHome(pieces[last], st0), 'and it really is in the wrong place');
+    assert.ok(!env.calls.includes('strokeStyle=' + GREEN), 'a wrong spot gets no green border');
 
     // Putting a piece where it belongs starts the animation: the canvas keeps redrawing for a moment.
     await solveByDragging(env, 3);
@@ -1309,6 +1334,63 @@ test('the art photo puzzle is called Art photo in its header and in shared resul
     await until(() => env.clipboard.text);
     assert.match(env.clipboard.text, /Pentomino Daily · Art photo ·/);
     assert.doesNotMatch(env.clipboard.text, /Fixed pieces/);
+  } finally {
+    env.teardown();
+  }
+});
+
+
+test('assist gives no green border to a piece on its own cells but turned or mirrored, only once it is exactly right', async () => {
+  // Seed alt0 has pieces W V Y T L I; the T looks the same flipped left-to-right, so it can sit on its own
+  // cells while showing mirrored picture slices. That is enough to win, but it is not "correct" for assist.
+  const env = makeEnv({ recordCalls: true, search: '?debug&seed=alt0' });
+  try {
+    await until(() => env.pento() && env.pento().pieces.length > 0);
+    env.el('help').open = false;
+    switchAssist(env, true);
+    const { pieces, states, layout } = env.pento();
+    const { s, bx, by, cols, rows } = layout;
+    const T = 3;
+    assert.equal(pieces[T].letter, 'T');
+    const st = states[T];
+    const home = pieces[T].home.map((c) => c.join(',')).sort().join(';');
+
+    // Find the flipped orientation that covers exactly the T's own cells.
+    let twin = null;
+    for (let x = -3; x < cols + 3 && !twin; x++) {
+      for (let y = -3; y < rows + 3 && !twin; y++) {
+        const cells = Core.cellsAt(pieces[T], 0, true, [x, y]).map((c) => c.join(',')).sort().join(';');
+        if (cells === home) twin = [x, y];
+      }
+    }
+    assert.ok(twin, 'a flipped T covers the same cells');
+
+    st.r = 0; // flip it in the tray, then drop it on its own cells
+    st.f = true;
+    const [sx, sy] = [bx + st.slot[0] * s, by + st.slot[1] * s];
+    const target = Core.pivotForGrid(pieces[T], 0, true, twin);
+    const canvas = env.el('board');
+    canvas.fire('pointerdown', ptr(sx, sy));
+    canvas.fire('pointermove', ptr((sx + bx + target[0] * s) / 2, (sy + by + target[1] * s) / 2));
+    canvas.fire('pointermove', ptr(bx + target[0] * s, by + target[1] * s));
+    canvas.fire('pointerup', ptr(bx + target[0] * s, by + target[1] * s));
+    assert.equal(st.placed, true);
+    assert.ok(Core.isHome(pieces[T], st), 'it covers its own cells (the win rule accepts that)');
+    assert.ok(!Core.isExactHome(pieces[T], st), 'but it is mirrored');
+
+    env.calls.length = 0;
+    await new Promise((r) => setTimeout(r, 120));
+    assert.ok(!env.calls.includes('strokeStyle=' + GREEN), 'no green border for a mirrored piece');
+    assert.equal(st.ok, false);
+
+    // Flip it back with the Flip button: now it is exactly right and gets the border.
+    assert.equal(env.pento().selected, T, 'the piece is still selected after being dropped');
+    env.el('btn-flip').fire('click');
+    assert.equal(st.f, false);
+    assert.ok(Core.isExactHome(pieces[T], st), 'flipped back to the way it was cut');
+    env.calls.length = 0;
+    await new Promise((r) => setTimeout(r, 120));
+    assert.ok(env.calls.includes('strokeStyle=' + GREEN), 'now it gets the green border');
   } finally {
     env.teardown();
   }
